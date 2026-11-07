@@ -1,6 +1,6 @@
 // Assistente por regras: entende comandos previstos e sempre mostra uma prévia antes de salvar.
 // Nenhum dado de saúde passa por aqui. Dúvidas clínicas são encaminhadas ao médico.
-import { norm, brl, fData, fHora, rotuloDia, dia, hoje, diasAte, DIAS, DIAS_N, valorBR, cap } from "./util.js";
+import { norm, brl, fData, fHora, rotuloDia, dia, hoje, diasAte, DIAS, DIAS_N, valorBR, cap, iso } from "./util.js";
 import { lista, config } from "./dados.js";
 
 export const SUGESTOES = [
@@ -90,6 +90,179 @@ function lerSintoma(n, base){
   return { resp: "Confere antes de eu salvar no seu diário de sintomas? Eu só anoto: não diagnostico. Se te preocupar, fale com seu médico.", previa: { acao: "sintoma", dados: { data: quando.toISOString(), sintoma: cap(desc), intens, nota: base }, campos: { "Sintoma": cap(desc), "Intensidade": `${intens} de 5`, "Quando": rotuloDia(quando) + ", " + fData(quando), "Anotação": base } } };
 }
 
+/* ---------- Datas e horas ditas em português ---------- */
+const pad2 = x => String(x).padStart(2, "0");
+const FIM_TEXTO = /\s+(?:(?:hoje|amanha|ontem|(?:na |nesta |proxima )?(?:segunda|terca|quarta|quinta|sexta|sabado|domingo)|de manha|a tarde|a noite|que vem)\b|dia \d|\d{1,2}\/\d{1,2}|as \d|a \d|\d{1,2}h).*$/;
+function lerData(n, futuro){
+  if (/\bhoje\b/.test(n)) return dia(0);
+  if (/\bamanha\b/.test(n)) return dia(1);
+  if (/\bontem\b/.test(n)) return dia(-1);
+  const m = n.match(/\bdia (\d{1,2})(?:\/(\d{1,2}))?\b/) || n.match(/\b(\d{1,2})\/(\d{1,2})\b/);
+  if (m){
+    const d = new Date(hoje().getFullYear(), m[2] ? Number(m[2]) - 1 : hoje().getMonth(), Number(m[1]));
+    if (futuro && d < hoje()) d.setMonth(d.getMonth() + (m[2] ? 12 : 1));
+    return d;
+  }
+  const w = n.match(/\b(domingo|segunda|terca|quarta|quinta|sexta|sabado)\b/);
+  if (w){ const alvo = DIAS_N.indexOf(w[1]); return futuro ? dia((alvo - hoje().getDay() + 7) % 7) : dia(-((hoje().getDay() - alvo + 7) % 7)); }
+  return null;
+}
+function lerHora(n){
+  const m = n.match(/\b(?:as|a|pras|para as)\s+(\d{1,2})(?:[:h](\d{2}))?\s*(?:h|hs|horas?)?\b/) || n.match(/\b(\d{1,2})(?:h(\d{2})|:(\d{2}))?\s*(?:h|hs|horas)\b/) || n.match(/\b(\d{1,2})h(\d{2})\b/);
+  if (!m) return null;
+  const h = Number(m[1]), mi = Number(m[2] || m[3] || 0);
+  return h <= 23 && mi <= 59 ? `${pad2(h)}:${pad2(mi)}` : null;
+}
+const comHora = (d, h) => { const x = new Date(d); const [hh, mm] = (h || "00:00").split(":").map(Number); x.setHours(hh, mm, 0, 0); return x; };
+const quandoTxt = (d, comH) => `${rotuloDia(d)}, ${fData(d)}${comH ? " às " + fHora(d) : ""}`;
+// Pega o trecho original (com acentos) correspondente a uma posição do texto normalizado.
+const trecho = (base, ini, fim) => base.slice(ini, fim).replace(/^[\s,:;-]+|[\s,.;:!?-]+$/g, "");
+
+/* ---------- Faculdade ---------- */
+const APELIDOS = [[/\bhc\b|habilidades/, "Habilidades Clínicas"], [/concepcao/, "Módulo de Concepção"], [/\bic\b|comunitaria/, "Interação Comunitária"], [/\bagressao\b/, "Agressão e Defesa"]];
+function acharDisc(t){
+  const n = norm(t).trim(); if (!n) return null;
+  const discs = config().disciplinas;
+  const ap = APELIDOS.find(([r]) => r.test(n)); if (ap && discs.includes(ap[1])) return ap[1];
+  const pal = n.split(/\s+/).filter(p => p.length >= 4);
+  return discs.find(d => n.includes(norm(d))) || discs.find(d => norm(d).split(/\s+/).some(q => q.length >= 4 && pal.some(p => q.slice(0, 5) === p.slice(0, 5)))) || null;
+}
+function lerEstudo(n, base){
+  if (!/\b(estudei|estudando|revisei|li)\b/.test(n) || /\b(prova|seminario)\b.*\b(amanha|dia|segunda|terca|quarta|quinta|sexta)\b/.test(n)) return null;
+  if (/\bli\b/.test(n) && !/\b(capitulo|apostila|livro|artigo|resumo|materia)\b/.test(n)) return null;
+  const min = duracaoMin(n);
+  let disc = acharDisc(n);
+  if (!disc){
+    const mm = n.match(/\b(?:estudei|revisei|li)\s+(?:\S+\s+){0,3}?(?:de|da|do|sobre|em)\s+([a-z ]+?)(?:\s+(?:hoje|ontem|por|durante|\d).*)?$/);
+    disc = mm ? cap(mm[1].trim()) : null;
+  }
+  if (!disc) return { resp: `Estudou qual disciplina? Ex.: "Estudei 2 h de ${config().disciplinas[0] || "Anatomia"}".` };
+  if (!min) return { resp: `Quanto tempo você estudou ${disc}? Ex.: "Estudei 1h30 de ${disc}".` };
+  const horas = Math.round(min / 60 * 100) / 100;
+  const quando = /\bontem\b/.test(n) ? dia(-1, 12) : new Date();
+  return { resp: "Confere antes de eu salvar?", previa: { acao: "estudo", dados: { disc, horas, data: quando.toISOString() }, campos: { "Disciplina": disc + (config().disciplinas.includes(disc) ? "" : " (fora da sua lista)"), "Tempo": `${horas.toLocaleString("pt-BR")} h`, "Quando": quandoTxt(quando) } } };
+}
+function lerDisciplina(n, base){
+  const m = n.match(/\b(?:adicion\w*|cadastr\w*|inclu\w*|nova|novo|criar?)\s+(?:a\s+|uma\s+)?(?:materia|disciplina)\s+(?:de\s+|chamada\s+)?(.+)$/);
+  if (!m) return null;
+  const nome = cap(trecho(base, n.length - m[1].length));
+  if (!nome) return { resp: "Qual o nome da disciplina?" };
+  if (config().disciplinas.some(d => norm(d) === norm(nome))) return { resp: `${nome} já está na sua lista de disciplinas.` };
+  return { resp: "Confere antes de eu salvar?", previa: { acao: "disciplina", dados: { nome }, campos: { "Nova disciplina": nome } } };
+}
+function lerFeita(n){
+  const m = n.match(/\b(?:fiz|fizemos|entreguei|apresentei|apresentamos|terminei|acabei)\s+(?:a\s+|o\s+|minha\s+|meu\s+)?(prova|trabalho|seminario|substitutiva)\s+(?:de|da|do)\s+([a-z ]+?)(?:\s+(?:hoje|ontem|agora)\b.*)?$/);
+  if (!m) return null;
+  const tipo = { prova: "Prova", trabalho: "Trabalho", seminario: "Seminário", substitutiva: "Substitutiva" }[m[1]];
+  const disc = acharDisc(m[2]) || cap(m[2].trim());
+  const a = lista("aval").filter(x => !x.feita && x.tipo === tipo && norm(x.disc) === norm(disc)).sort((x, y) => Math.abs(new Date(x.data) - Date.now()) - Math.abs(new Date(y.data) - Date.now()))[0];
+  if (!a) return { resp: `Não achei ${tipo.toLowerCase()} de ${disc} pendente no app. Se quiser cadastrar: "Tenho ${tipo.toLowerCase()} de ${disc} quinta às 14h".` };
+  return { resp: "Marcar como feita?", previa: { acao: "aval-feita", dados: { id: a.id }, campos: { "Avaliação": `${a.tipo} de ${a.disc}`, "Data": quandoTxt(new Date(a.data), true), "Marcar como": "Feita" } } };
+}
+function lerNota(n){
+  if (/\b(tirei|tive|fiquei com|minha nota|nota)\b.*\b\d/.test(n) && /\b(prova|nota|trabalho|seminario|substitutiva|media)\b/.test(n))
+    return { resp: "O MY LIFE ainda não tem lugar para guardar notas de prova. Por enquanto eu consigo marcar a prova como feita: \"Fiz a prova de Anatomia\"." };
+  return null;
+}
+
+/* ---------- Finanças: limite do orçamento ---------- */
+function lerOrcamento(n){
+  const m = n.match(/\b(?:limite|orcamento|teto|meta de gasto)\s+(?:de|do|da|para|pra|com|em)?\s*([a-z ]+?)\s*(?:e|eh|de|para|pra|em|fica|ficar|:|=)?\s*(?:r\$\s*)?([\d.]+(?:,\d{1,2})?)\s*(?:reais)?\s*$/);
+  if (!m) return null;
+  const cats = Object.keys(config().orcamento);
+  const cat = cats.find(c => norm(c) === m[1].trim()) || cats.find(c => norm(c).startsWith(m[1].trim().slice(0, 4)));
+  if (!cat) return { resp: `Qual categoria? As suas são: ${cats.join(", ")}.` };
+  const valor = valorBR(m[2]);
+  if (!(valor >= 0)) return { resp: "Não entendi o valor. Ex.: \"Limite de Lazer 300\"." };
+  return { resp: "Confere antes de eu salvar?", previa: { acao: "orcamento", dados: { cat, valor }, campos: { "Categoria": cat, "Limite por mês": brl(valor), "Antes": brl(config().orcamento[cat]) } } };
+}
+
+/* ---------- Saúde (só regras, nunca IA) ---------- */
+function lerMed(n, base){
+  const m = n.match(/\b(?:comecei a tomar|vou comecar a tomar|cadastr\w*\s+(?:o\s+|a\s+|um\s+|uma\s+)?(?:remedio|medicamento|suplemento|vitamina)|(?:novo|nova)\s+(?:remedio|medicamento|suplemento|vitamina)|adicion\w*\s+(?:o\s+|a\s+)?(?:remedio|medicamento|suplemento|vitamina)|o medico (?:passou|receitou)|a medica (?:passou|receitou))\s*:?\s+(.+)$/);
+  if (!m) return null;
+  const ini = n.length - m[1].length;
+  const corte = m[1].search(/\s+(?:todo dia|todos os dias|diariamente|toda noite|toda manha|de manha|a noite)\b|\s+(?:as|a)\s+\d|\s+\d{1,2}h|\s+de \d+ em \d+|,/);
+  const nome = cap(trecho(base, ini, corte > 0 ? ini + corte : undefined));
+  if (!nome) return { resp: "Qual o nome do remédio?" };
+  const hora = lerHora(n) || "";
+  let extra = corte > 0 ? trecho(base, ini + corte) : "";
+  if (/^(?:às|as|a|à)?\s*\d{1,2}(?:[:h]\d{2})?\s*h?(?:oras)?$/i.test(extra)) extra = "";
+  const orient = extra ? cap(extra) + " (como você disse)" : "Conforme prescrição médica";
+  return { resp: "Confere antes de eu salvar? Eu só registro, não recomendo doses.", previa: { acao: "med", dados: { nome, hora, orient }, campos: { "Remédio": nome, "Horário": hora || "—", "Orientação": orient } } };
+}
+function lerDose(n){
+  if (!/\b(tomei|ja tomei|tomado)\b/.test(n)) return null;
+  const meds = lista("med");
+  const med = meds.find(x => norm(x.nome).split(/\s+/).some(p => p.length >= 4 && n.includes(p)));
+  if (med) return { resp: "Confere antes de eu salvar?", previa: { acao: "dose", dados: { medId: med.id, data: iso(hoje()), hora: fHora(new Date()) }, campos: { "Remédio": med.nome, "Tomado": "Hoje, " + fHora(new Date()) } } };
+  if (!/\b(remedio|medicamento|comprimido|pilula|anticoncepcional|capsula|suplemento|vitamina)\b/.test(n)) return null;
+  if (!meds.length) return { resp: "Você ainda não tem remédios cadastrados. Ex.: \"Comecei a tomar Metformina às 8h\"." };
+  if (meds.length === 1) return lerDose(n + " " + norm(meds[0].nome));
+  return { resp: `Qual deles? ${meds.map(x => x.nome).join(", ")}. Ex.: "Tomei a ${meds[0].nome}".` };
+}
+const ESPECIALIDADE = /\b(gineco\w*|endocrino\w*|dermato\w*|nutri\w*|psico\w*|psiquiatra|dentista|cardio\w*|oftalmo\w*|clinico geral|medic[oa]|fisioterap\w*|ortopedista|otorrino)\b/;
+function lerConsulta(n, base){
+  if (!/\bconsulta\b/.test(n) && !(ESPECIALIDADE.test(n) && /\b(tenho|marquei|marcado|marcada|vou)\b/.test(n) && lerData(n, true))) return null;
+  if (/\b(paguei|gastei|custou|reais|r\$)\b/.test(n)) return null;
+  const d = lerData(n, true);
+  let titulo = "Consulta";
+  const com = n.match(/\b(?:com|no|na)\s+(?:o\s+|a\s+|dr\.?\s+|dra\.?\s+)?(.+)$/);
+  if (com){ const ini = n.length - com[1].length; const c = com[1].replace(FIM_TEXTO, "").trim(); if (c) titulo = "Consulta com " + trecho(base, ini, ini + c.length); }
+  else { const e = n.match(ESPECIALIDADE); if (e) titulo = "Consulta com " + e[1]; }
+  if (!d) return { resp: `Para quando é a ${titulo.toLowerCase()}? Ex.: "Consulta com ginecologista dia 20/11 às 15h".` };
+  const h = lerHora(n); const quando = comHora(d, h || "09:00");
+  return { resp: "Confere antes de eu salvar? Ela vai aparecer na Agenda do MY LIFE.", previa: { acao: "consulta", dados: { titulo, data: quando.toISOString(), nota: "" }, campos: { "Consulta": titulo, "Quando": quandoTxt(quando, true) + (h ? "" : " (horário não dito)") } } };
+}
+const EXAME = /\b(exames?|ultrassom|ultrassonografia|ecografia|hemograma|ressonancia|tomografia|raio[- ]?x|papanicolau|preventivo|mamografia|eletrocardiograma|glicemia|coleta de sangue)\b/;
+function lerExame(n, base){
+  const k = n.search(EXAME); if (k < 0) return null;
+  if (/\b(paguei|gastei|custou|reais|r\$)\b/.test(n)) return null;
+  const status = /\b(resultado|saiu|sairam|chegou|chegaram|ficou pronto|ficaram prontos)\b/.test(n) ? "Resultado recebido" : /\b(fiz|coletei|realizei|tirei|fui fazer)\b/.test(n) ? "Aguardando resultado" : "Agendado";
+  let tituloN = n.slice(k).replace(FIM_TEXTO, "").replace(/\s+(saiu|sairam|chegou|ficou|ficaram|esta|ta|ja)\b.*$/, "").trim();
+  const titulo = cap(trecho(base, k, k + tituloN.length)) || "Exame";
+  const chave = norm(titulo).replace(/^exames?\s+(de\s+|do\s+|da\s+)?/, "");
+  const existente = lista("exame").filter(e => e.status !== status && (norm(e.titulo).includes(chave) || chave.includes(norm(e.titulo).replace(/^exames?\s+(de\s+|do\s+|da\s+)?/, "")))).sort((a, b) => new Date(b.data) - new Date(a.data))[0];
+  if (existente && status !== "Agendado") return { resp: "Atualizar este exame?", previa: { acao: "exame-status", dados: { id: existente.id, status }, campos: { "Exame": existente.titulo, "Situação": `${existente.status} → ${status}` } } };
+  const d = lerData(n, status === "Agendado") || (status === "Agendado" ? null : dia(0));
+  if (!d) return { resp: `Para quando é o ${titulo.toLowerCase()}? Ex.: "Exame de sangue dia 15/11".` };
+  const quando = comHora(d, lerHora(n) || "08:00");
+  return { resp: "Confere antes de eu salvar?", previa: { acao: "exame", dados: { titulo, data: quando.toISOString(), status }, campos: { "Exame": titulo, "Data": quandoTxt(quando), "Situação": status } } };
+}
+function lerCarga(n, base){
+  const p = n.match(/(\d+(?:,\d+)?)\s*(?:kg|quilos?|kilos?)\b/); if (!p) return null;
+  if (/\b(peso|pesando|pesei|engordei|emagreci|balanca)\b/.test(n)) return { resp: "O MY LIFE não guarda peso corporal nem medidas. Eu registro a carga dos exercícios, ex.: \"Supino 20 kg 3x10\"." };
+  const ini = n.search(/[a-z]/);
+  let exN = n.slice(0, p.index).replace(/^(hoje|ontem)\s+/, "").replace(/^(fiz|peguei|levantei|usei|botei|coloquei|subi pra|subi para)\s+(o\s+|a\s+|no\s+|na\s+)?/, "").replace(/\s+(com|de|no|na)\s*$/, "").trim();
+  let exI = n.indexOf(exN);
+  if (!exN){ const depois = n.slice(p.index + p[0].length).match(/^\s*(?:no|na|de|em)\s+([a-z ]+?)(?:\s+\d.*|\s+(?:hoje|ontem).*)?$/); if (depois){ exN = depois[1].trim(); exI = n.indexOf(exN, p.index); } }
+  if (!exN) return { resp: "Qual exercício? Ex.: \"Supino 20 kg 3x10\"." };
+  const exercicio = cap(trecho(base, exI, exI + exN.length));
+  const peso = valorBR(p[1]);
+  const sx = n.match(/\b(\d+)\s*x\s*(\d+)\b/) || n.match(/\b(\d+)\s*series?\s*(?:de\s*(\d+))?/);
+  const rp = n.match(/\b(\d+)\s*(?:repeticoes|reps|repeticao)\b/);
+  const series = sx ? Number(sx[1]) : null, reps = sx && sx[2] ? Number(sx[2]) : rp ? Number(rp[1]) : null;
+  const quando = /\bontem\b/.test(n) ? dia(-1, 12) : dia(0, 12);
+  return { resp: "Confere antes de eu salvar?", previa: { acao: "carga", dados: { data: quando.toISOString(), exercicio, peso, series, reps, nota: "" }, campos: { "Exercício": exercicio, "Carga": `${peso.toLocaleString("pt-BR")} kg`, "Séries × reps": `${series || "—"} × ${reps || "—"}`, "Data": quandoTxt(quando) } } };
+}
+function lerRefeicao(n, base){
+  const m = n.match(/\b(almocei|jantei|lanchei|comi|tomei cafe(?: da manha)?|cafe da manha|no almoco|no jantar|no lanche|de lanche|na ceia|de almoco|de janta|de jantar)\b/);
+  if (!m) return null;
+  const q = m[1];
+  const hr = new Date().getHours();
+  const quando = /cafe/.test(q) ? "Café da manhã" : /almo/.test(q) ? "Almoço" : /jant/.test(q) ? "Jantar" : /ceia/.test(q) ? "Ceia" : /lanch/.test(q) ? "Lanche" : hr < 10 ? "Café da manhã" : hr < 15 ? "Almoço" : hr < 18 ? "Lanche" : hr < 22 ? "Jantar" : "Ceia";
+  // Refeição com valor ("almocei e paguei 25 pila") é um gasto com a refeição.
+  const v = n.match(/(?:r\$\s*)?(\d+(?:,\d{1,2})?)\s*(?:reais|conto|contos|pila|pilas)\b/) || (/\b(paguei|gastei|deixei|custou|saiu)\b/.test(n) && n.match(/\b(?:paguei|gastei|deixei|custou|saiu(?: por)?)\s+(?:r\$\s*)?(\d+(?:,\d{1,2})?)\b/));
+  if (v){
+    const valor = valorBR(v[1]); const d = /\bontem\b/.test(n) ? dia(-1) : hoje();
+    return { resp: "Confere antes de eu salvar?", previa: { acao: "fin", dados: { tipo: "despesa", valor, desc: quando, cat: categoriaPor("comida"), data: d.toISOString() }, campos: { "Tipo": "Despesa", "Valor": brl(valor), "Descrição": quando, "Categoria": categoriaPor("comida"), "Data": rotuloDia(d) + ", " + fData(d) } } };
+  }
+  const ini = m.index + q.length;
+  const t = trecho(base, ini).replace(/^(eu\s+)?(comi|almocei|jantei|lanchei)\s*/i, "").replace(/^(de|o|a|um|uma|uns|umas|foi|:)\s+/i, "").replace(/\s+(hoje|agora)$/i, "");
+  if (!t) return { resp: `O que você comeu no ${quando.toLowerCase()}? Ex.: "Almocei arroz, feijão e frango".` };
+  return { resp: "Confere antes de eu salvar? (só registro, sem calorias)", previa: { acao: "refeicao", dados: { data: iso(hoje()), quando, texto: t }, campos: { "Refeição": quando, "O que": t, "Quando": "Hoje, " + fData(hoje()) } } };
+}
+
 export function descDias(ds){
   const s = [...ds].sort((a, b) => a - b).join(",");
   if (s === "0,1,2,3,4,5,6") return "Todo dia"; if (s === "1,2,3,4,5") return "Segunda a sexta"; if (s === "0,6") return "Fim de semana";
@@ -104,9 +277,9 @@ export function interpretar(texto, ctx){
   if (/(dose|dosagem|posso tomar|devo tomar|aumentar|diminuir|parar de tomar|efeito colateral|diagnost|e normal sentir|que remedio|qual remedio)/.test(n))
     return { resp: "Essa é uma dúvida clínica. Eu não diagnostico nem recomendo doses. Leve essa pergunta ao seu médico. Se quiser, registre o sintoma em Saúde → Sintomas para mostrar na consulta." };
 
-  let m = n.match(/(?:registr\w*|anot\w*|lanc\w*|adicion\w*|gastei|recebi)\s+(?:uma?\s+)?(?:(despesa|gasto|receita)\s+de\s+)?r?\$?\s*([\d.]+(?:,\d{1,2})?)\s+(?:reais\s+)?(?:com|de|em|no|na|do|da|pra|para)\s+(.+)/);
+  let m = n.match(/(?:registr\w*|anot\w*|lanc\w*|adicion\w*|gastei|recebi|ganhei|paguei|comprei)\s+(?:uma?\s+)?(?:(despesa|gasto|receita)\s+de\s+)?r?\$?\s*([\d.]+(?:,\d{1,2})?)\s+(?:reais\s+)?(?:com|de|em|no|na|do|da|pra|para)\s+(.+)/);
   if (m){
-    const tipo = m[1] === "receita" || /^recebi/.test(n) ? "receita" : "despesa";
+    const tipo = m[1] === "receita" || /^(recebi|ganhei)/.test(n) ? "receita" : "despesa";
     const valor = valorBR(m[2]);
     const dm = texto.match(/\d(?:[\d.,]*)\s+(?:reais\s+)?(?:com|de|em|no|na|do|da|pra|para)\s+(.+)$/i);
     const desc = (dm ? dm[1] : m[3]).replace(/[.!?]+$/, "").trim();
@@ -133,8 +306,9 @@ export function interpretar(texto, ctx){
   }
 
   const base = texto.normalize("NFC").replace(/\s+/g, " ").trim();
-  const saude = lerAgua(n) || lerTreino(n, base) || lerSintoma(n, base);
-  if (saude) return saude;
+  const outro = lerNota(n) || lerFeita(n) || lerDisciplina(n, base) || lerEstudo(n, base) || lerOrcamento(n)
+    || lerAgua(n) || lerCarga(n, base) || lerTreino(n, base) || lerMed(n, base) || lerDose(n) || lerConsulta(n, base) || lerExame(n, base) || lerSintoma(n, base) || lerRefeicao(n, base);
+  if (outro) return outro;
 
   if (/(quais|proximas|que) (provas|trabalhos|avaliacoes)|provas (estao )?chegando|minhas provas/.test(n)){
     const p = ctx.proximas();
@@ -211,5 +385,5 @@ export function interpretar(texto, ctx){
     const ev = ctx.eventosDoDia(hoje());
     return { resp: ev.length ? "Hoje:\n" + ev.map(e => `• ${e.diaTodo ? "dia todo" : fHora(e.ini)} ${e.titulo}`).join("\n") : "Nada marcado para hoje." };
   }
-  return { naoEntendi: true, resp: "Não entendi. Eu entendo comandos como:\n• Registre despesa de R$ 35 com ração\n• Gastei 80 em roupa\n• Recebi 200 de freela\n• Tenho prova de Anatomia quinta às 14h\n• Quais provas estão chegando?\n• Quanto gastei este mês? / Qual meu saldo?\n• Organize minha semana / O que tenho hoje?\n• Toda segunda e quarta tenho academia das 7h às 8h\n• Quando eu disser mercadinho, é Alimentação\n• Mostre minha rotina / Remover academia\n• Estou com dor de cabeça forte\n• Bebi 2 copos de água\n• Fiz 30 min de caminhada" };
+  return { naoEntendi: true, resp: "Não entendi. Eu entendo comandos como:\n• Registre despesa de R$ 35 com ração\n• Gastei 80 em roupa\n• Recebi 200 de freela\n• Tenho prova de Anatomia quinta às 14h\n• Quais provas estão chegando?\n• Quanto gastei este mês? / Qual meu saldo?\n• Organize minha semana / O que tenho hoje?\n• Toda segunda e quarta tenho academia das 7h às 8h\n• Quando eu disser mercadinho, é Alimentação\n• Mostre minha rotina / Remover academia\n• Estudei 2h de Histologia / Fiz a prova de Anatomia\n• Limite de Lazer 300 / Adicionar disciplina Bioquímica\n• Estou com dor de cabeça forte / Bebi 2 copos de água\n• Fiz 30 min de caminhada / Supino 20 kg 3x10\n• Almocei arroz, feijão e frango\n• Comecei a tomar Metformina às 8h / Tomei a Metformina\n• Consulta com ginecologista dia 20/11 às 15h\n• Exame de sangue dia 15/11 / Saiu o resultado do exame de sangue" };
 }
