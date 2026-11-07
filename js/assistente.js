@@ -22,6 +22,74 @@ export function categoriaPor(t){
   return "Outros";
 }
 
+/* ---------- Saúde por regras (nada disso vai para a IA) ---------- */
+const NUM = { um: 1, uma: 1, dois: 2, duas: 2, tres: 3, quatro: 4, cinco: 5, seis: 6, sete: 7, oito: 8, nove: 9, dez: 10, meio: 0.5, meia: 0.5 };
+const numero = s => NUM[s] ?? valorBR(s);
+
+// Água: "bebi 2 copos de água", "tomei 1 litro de água", "mais um copo de água"
+function lerAgua(n){
+  if (!/\bagua\b/.test(n) || !/\b(bebi|tomei|mais|beber)\b/.test(n)) return null;
+  const m = n.match(/\b(\d+(?:,\d+)?|um|uma|dois|duas|tres|quatro|cinco|seis|sete|oito|nove|dez|meio|meia)\s*(copos?|garrafas?|garrafinhas?|litros?|l|ml)?\s*(?:de\s+)?agua\b/);
+  if (!m) return { resp: "Quantos copos de água? Ex.: \"Bebi 2 copos de água\"." };
+  const q = numero(m[1]), u = m[2] || "copo";
+  const fator = /^garraf/.test(u) ? 2 : /^(litro|l$)/.test(u) ? 4 : u === "ml" ? 1 / 250 : 1;
+  const copos = Math.max(1, Math.round(q * fator));
+  if (!(copos > 0) || copos > 40) return { resp: "Não entendi a quantidade. Ex.: \"Bebi 2 copos de água\"." };
+  return { resp: "Confere antes de eu salvar?", previa: { acao: "agua", dados: { copos }, campos: { "Água": `+${copos} copo(s) de 250 ml`, "Quando": "Hoje, " + fData(hoje()) } } };
+}
+
+// Treino: "fiz 30 min de caminhada", "corri 40 minutos", "malhei 1h ontem"
+const ATIVIDADES = [[/musculacao|academia|malhei/, "Musculação"], [/\bi?oga\b|yoga/, "Yoga"], [/pilates/, "Pilates"], [/corri\b|corrida/, "Corrida"], [/caminhei|caminhada/, "Caminhada"], [/nadei|natacao/, "Natação"], [/pedalei|bike|bicicleta|ciclismo|spinning/, "Bicicleta"], [/danc/, "Dança"], [/funcional/, "Funcional"], [/crossfit/, "Crossfit"], [/alongamento|alonguei/, "Alongamento"]];
+function duracaoMin(n){
+  let m;
+  if (/uma hora e meia/.test(n)) return 90;
+  if ((m = n.match(/(\d+)\s*h(?:oras?)?\s*(?:e\s*)?(\d{1,2})\s*(?:min(?:utos?)?)?\b/))) return Number(m[1]) * 60 + Number(m[2]);
+  if ((m = n.match(/(\d+(?:,\d+)?)\s*h(?:oras?)?\b/))) return Math.round(valorBR(m[1]) * 60);
+  if ((m = n.match(/(\d+)\s*min/))) return Number(m[1]);
+  if (/meia hora/.test(n)) return 30;
+  if (/uma hora/.test(n)) return 60;
+  return null;
+}
+function lerTreino(n, base){
+  if (/estud|prova|trabalho|seminario|aula/.test(n)) return null;
+  const verbo = /\b(treinei|pratiquei|corri|caminhei|nadei|pedalei|malhei|alonguei)\b/.test(n);
+  const fiz = /\b(fiz|fui)\b/.test(n);
+  const ativ = ATIVIDADES.find(([r]) => r.test(n));
+  const min = duracaoMin(n);
+  if (!verbo && !(fiz && (ativ || min))) return null;
+  let tipo = ativ ? ativ[1] : null;
+  if (!tipo){
+    const i = norm(base).search(/\bde\s+[a-z]/);
+    const resto = i >= 0 ? base.slice(i + 3).replace(/\b(ontem|hoje|agora|de manh[ãa]|à tarde|a tarde|à noite|a noite)\b.*$/i, "").replace(/[.,;!?]+.*$/, "").trim() : "";
+    tipo = resto && resto.length <= 30 ? cap(resto) : "Treino";
+  }
+  if (!min) return { resp: `Quanto tempo durou? Ex.: "Fiz 30 min de ${tipo.toLowerCase() === "treino" ? "caminhada" : tipo.toLowerCase()}".` };
+  if (min > 600) return { resp: "Não entendi a duração. Ex.: \"Fiz 45 min de musculação\"." };
+  const quando = /\bontem\b/.test(n) ? dia(-1, 12) : dia(0, 12);
+  return { resp: "Confere antes de eu salvar?", previa: { acao: "treino", dados: { data: quando.toISOString(), tipo, min }, campos: { "Atividade": tipo, "Duração": `${min} min`, "Data": rotuloDia(quando) + ", " + fData(quando) } } };
+}
+
+// Sintoma: "estou com dor de cabeça forte", "tive cólica ontem", "acordei enjoada"
+const SINTOMA = /\b(dor(es)?\b|doendo|colica|enjo|nausea|tontura|tonta|tonto|enxaqueca|febre|calafrio|cansac|cansad|fadiga|exaust|insonia|inchac|inchad|acne|espinha|queda de cabelo|sangramento|fluxo|gases|azia|diarreia|constipa|prisao de ventre|mal[- ]estar|indisposi|vomit|irritad|irritabil|triste|desanim|ansios|ansiedade|estress|coceira|falta de ar|palpita|tosse|coriza|gripad|resfriad|sonolen)/;
+const GATILHO = /\b(estou|esta|to|tou|ando|acordei|amanheci|fiquei|sinto|senti|sentindo|tive|tenho|bateu|deu|com)\b/;
+function lerSintoma(n, base){
+  const k = n.search(SINTOMA);
+  if (k < 0) return null;
+  if (k > 0 && !GATILHO.test(n.slice(0, k))) return null;
+  const nb = norm(base), kb = nb.search(SINTOMA);
+  let desc = base.slice(kb).replace(/[.;!?].*$/, "");
+  const corte = norm(desc).search(/\s(muito|muita|bem|super|forte|fortissim|leve|fraca|fraco|pouc|moderad|media|insuportavel|demais|desde|hoje|ontem|agora|o dia|a tarde|a noite|de manha|de novo|outra vez)\b|,/);
+  if (corte > 0) desc = desc.slice(0, corte);
+  desc = desc.trim();
+  if (!desc) return null;
+  const NOMES = [[/^enjoad[oa]s?$/, "Enjoo"], [/^cansad[oa]s?$/, "Cansaço"], [/^tont[oa]s?$/, "Tontura"], [/^inchad[oa]s?$/, "Inchaço"], [/^gripad[oa]s?$/, "Gripe"], [/^resfriad[oa]s?$/, "Resfriado"], [/^ansios[oa]s?$/, "Ansiedade"], [/^triste$/, "Tristeza"], [/^desanimad[oa]s?$/, "Desânimo"], [/^irritad[oa]s?$/, "Irritação"], [/^estressad[oa]s?$/, "Estresse"], [/^exaust[oa]s?$/, "Exaustão"]];
+  const nome = NOMES.find(([r]) => r.test(norm(desc)));
+  if (nome) desc = nome[1];
+  const intens = /insuportavel|muito forte|fortissim|pior (dor|de todas)/.test(n) ? 5 : /\b(forte|muita|muito|demais|bastante)\b/.test(n) ? 4 : /\b(moderad|media)/.test(n) ? 3 : /\b(leve|pouca|pouco|fraca|fraco|um pouco)\b/.test(n) ? 1 : 2;
+  const quando = /\bontem\b/.test(n) ? dia(-1, 12) : new Date();
+  return { resp: "Confere antes de eu salvar no seu diário de sintomas? Eu só anoto: não diagnostico. Se te preocupar, fale com seu médico.", previa: { acao: "sintoma", dados: { data: quando.toISOString(), sintoma: cap(desc), intens, nota: base }, campos: { "Sintoma": cap(desc), "Intensidade": `${intens} de 5`, "Quando": rotuloDia(quando) + ", " + fData(quando), "Anotação": base } } };
+}
+
 export function descDias(ds){
   const s = [...ds].sort((a, b) => a - b).join(",");
   if (s === "0,1,2,3,4,5,6") return "Todo dia"; if (s === "1,2,3,4,5") return "Segunda a sexta"; if (s === "0,6") return "Fim de semana";
@@ -63,6 +131,10 @@ export function interpretar(texto, ctx){
     const choque = ctx.eventosDoDia(d).find(e => !e.diaTodo && e.ini < fimD && d < e.fim);
     return { resp: "Confere antes de eu salvar?" + (choque ? `\n\nAtenção: choca com "${choque.titulo}" (${fHora(choque.ini)}–${fHora(choque.fim)}).` : ""), previa: { acao: "aval", dados: { tipo, disc, titulo: tipo + " de " + disc, data: d.toISOString(), feita: false }, campos: { "Tipo": tipo, "Disciplina": disc + (discs.includes(disc) ? "" : " (nova)"), "Quando": `${rotuloDia(d)}, ${fData(d)} às ${fHora(d)}` } } };
   }
+
+  const base = texto.normalize("NFC").replace(/\s+/g, " ").trim();
+  const saude = lerAgua(n) || lerTreino(n, base) || lerSintoma(n, base);
+  if (saude) return saude;
 
   if (/(quais|proximas|que) (provas|trabalhos|avaliacoes)|provas (estao )?chegando|minhas provas/.test(n)){
     const p = ctx.proximas();
@@ -139,5 +211,5 @@ export function interpretar(texto, ctx){
     const ev = ctx.eventosDoDia(hoje());
     return { resp: ev.length ? "Hoje:\n" + ev.map(e => `• ${e.diaTodo ? "dia todo" : fHora(e.ini)} ${e.titulo}`).join("\n") : "Nada marcado para hoje." };
   }
-  return { naoEntendi: true, resp: "Não entendi. Eu entendo comandos como:\n• Registre despesa de R$ 35 com ração\n• Gastei 80 em roupa\n• Recebi 200 de freela\n• Tenho prova de Anatomia quinta às 14h\n• Quais provas estão chegando?\n• Quanto gastei este mês? / Qual meu saldo?\n• Organize minha semana / O que tenho hoje?\n• Toda segunda e quarta tenho academia das 7h às 8h\n• Quando eu disser mercadinho, é Alimentação\n• Mostre minha rotina / Remover academia" };
+  return { naoEntendi: true, resp: "Não entendi. Eu entendo comandos como:\n• Registre despesa de R$ 35 com ração\n• Gastei 80 em roupa\n• Recebi 200 de freela\n• Tenho prova de Anatomia quinta às 14h\n• Quais provas estão chegando?\n• Quanto gastei este mês? / Qual meu saldo?\n• Organize minha semana / O que tenho hoje?\n• Toda segunda e quarta tenho academia das 7h às 8h\n• Quando eu disser mercadinho, é Alimentação\n• Mostre minha rotina / Remover academia\n• Estou com dor de cabeça forte\n• Bebi 2 copos de água\n• Fiz 30 min de caminhada" };
 }
