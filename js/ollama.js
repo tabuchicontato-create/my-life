@@ -14,7 +14,7 @@ export function salvarOllama(c){
   try { localStorage.setItem(CHAVE, JSON.stringify({ ...cfgOllama(), ...c })); return true; } catch { return false; }
 }
 
-const SAUDE = /(remedi|medicament|medicac|dose|dosagem|\bsop\b|ovario|sintoma|menstrua|colica|ciclo|consulta|exame|medic[oa]|gineco|endocrin|metformina|anticoncep|pilula|hormon|insulina|glicose|tratamento|saude|diagnost|doen[cç]a|\bdor\b|ansiedade|depress|terapia|psico|enjo|nausea|febre|tontura|enxaqueca|insonia|vomit|azia|diarreia|sangramento|cansac|fadiga|calafrio)/;
+const SAUDE = /(remedi|medicament|medicac|dose|dosagem|\bsop\b|ovario|sintoma|menstrua|colica|ciclo|consulta|exame|medic[oa]|gineco|endocrin|metformina|anticoncep|pilula|hormon|insulina|glicose|tratamento|saude|diagnost|doen[cç]a|\bdor\b|ansiedade|depress|terapia|psico|enjo|nausea|febre|tontura|enxaqueca|insonia|vomit|azia|diarreia|sangramento|cansac|fadiga|calafrio|\btomei\b|comi\b|almocei|jantei|lanchei|refeic|treinei|malhei|musculac|supino|agachament|\bkg\b|ultrassom|hemograma)/;
 export const ehSaude = t => SAUDE.test(norm(t));
 
 function urlBase(){ return cfgOllama().url.replace(/\/+$/, ""); }
@@ -50,7 +50,11 @@ Cada comando deve seguir EXATAMENTE um destes modelos (troque o que está entre 
 - Registre despesa de R$ <valor> com <descrição curta>
 - Registre despesa de R$ <valor> com <descrição curta> ontem
 - Recebi <valor> de <origem>
+- Limite de <categoria> <valor>
 - Tenho <prova|trabalho|seminário|substitutiva> de <disciplina> <hoje|amanhã|segunda|terça|quarta|quinta|sexta|sábado|domingo|dia DD/MM> às <HH>h
+- Fiz a <prova|trabalho|seminário|substitutiva> de <disciplina>
+- Estudei <horas>h de <disciplina>
+- Adicionar disciplina <nome>
 - Quais provas estão chegando?
 - Quanto gastei este mês?
 - Qual meu saldo?
@@ -79,6 +83,10 @@ Mensagem: caiu 300 do estágio
 JSON: {"comandos": ["Recebi 300 de estágio"], "resposta": ""}
 Mensagem: quinta tem prova de histo às 10
 JSON: {"comandos": ["Tenho prova de Histologia quinta às 10h"], "resposta": ""}
+Mensagem: passei 2 horas estudando anato e já entreguei o trabalho de metep
+JSON: {"comandos": ["Estudei 2h de Anatomia", "Fiz o trabalho de METEP"], "resposta": ""}
+Mensagem: quero gastar no máximo 300 com lazer
+JSON: {"comandos": ["Limite de Lazer 300"], "resposta": ""}
 Mensagem: comprei umas coisas
 JSON: {"comandos": [], "resposta": "Quanto você gastou e com o quê?"}`;
 }
