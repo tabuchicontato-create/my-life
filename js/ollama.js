@@ -14,7 +14,7 @@ export function salvarOllama(c){
   try { localStorage.setItem(CHAVE, JSON.stringify({ ...cfgOllama(), ...c })); return true; } catch { return false; }
 }
 
-const SAUDE = /(remedi|medicament|medicac|dose|dosagem|\bsop\b|ovario|sintoma|menstrua|colica|ciclo|consulta|exame|medic[oa]|gineco|endocrin|metformina|anticoncep|pilula|hormon|insulina|glicose|tratamento|saude|diagnost|doen[cç]a|\bdor\b|ansiedade|depress|terapia|psico)/;
+const SAUDE = /(remedi|medicament|medicac|dose|dosagem|\bsop\b|ovario|sintoma|menstrua|colica|ciclo|consulta|exame|medic[oa]|gineco|endocrin|metformina|anticoncep|pilula|hormon|insulina|glicose|tratamento|saude|diagnost|doen[cç]a|\bdor\b|ansiedade|depress|terapia|psico|enjo|nausea|febre|tontura|enxaqueca|insonia|vomit|azia|diarreia|sangramento|cansac|fadiga|calafrio)/;
 export const ehSaude = t => SAUDE.test(norm(t));
 
 function urlBase(){ return cfgOllama().url.replace(/\/+$/, ""); }
