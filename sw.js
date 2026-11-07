@@ -1,6 +1,6 @@
 // Service worker do MY LIFE: guarda só os arquivos do app (nunca dados) para abrir mais rápido.
 // Sempre tenta a versão mais nova na rede primeiro.
-const CACHE = "mylife-v1.1.0";
+const CACHE = "mylife-v1.2.0";
 const ARQUIVOS = ["./", "index.html", "css/app.css", "manifest.webmanifest", "icones/icone.svg", "icones/icone-192.png",
   "js/app.js", "js/config.js", "js/cripto.js", "js/nuvem.js", "js/dados.js", "js/util.js", "js/telas.js", "js/assistente.js", "js/google.js"];
 self.addEventListener("install", e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(ARQUIVOS)).catch(() => {})); self.skipWaiting(); });

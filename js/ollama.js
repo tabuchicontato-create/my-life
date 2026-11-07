@@ -1,0 +1,85 @@
+// IA local (Ollama no computador da usuária). Só funciona no aparelho onde o Ollama roda.
+// O Ollama apenas TRADUZ a frase para os comandos que o assistente por regras já entende.
+// Nada de saúde é enviado: frases com termos de saúde são barradas antes.
+import { norm, DIAS, fData } from "./util.js";
+import { lista, config } from "./dados.js";
+
+const CHAVE = "mylife-ollama";
+const PADRAO = { ativo: false, url: "http://localhost:11434", modelo: "qwen2.5:3b" };
+
+export function cfgOllama(){
+  try { return { ...PADRAO, ...JSON.parse(localStorage.getItem(CHAVE) || "{}") }; } catch { return { ...PADRAO }; }
+}
+export function salvarOllama(c){
+  try { localStorage.setItem(CHAVE, JSON.stringify({ ...cfgOllama(), ...c })); return true; } catch { return false; }
+}
+
+const SAUDE = /(remedi|medicament|medicac|dose|dosagem|\bsop\b|ovario|sintoma|menstrua|colica|ciclo|consulta|exame|medic[oa]|gineco|endocrin|metformina|anticoncep|pilula|hormon|insulina|glicose|tratamento|saude|diagnost|doen[cç]a|\bdor\b|ansiedade|depress|terapia|psico)/;
+export const ehSaude = t => SAUDE.test(norm(t));
+
+function urlBase(){ return cfgOllama().url.replace(/\/+$/, ""); }
+
+async function pedir(caminho, corpo, ms){
+  const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), ms);
+  try {
+    const r = await fetch(urlBase() + caminho, corpo ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(corpo), signal: ctl.signal } : { signal: ctl.signal });
+    if (!r.ok) throw new Error("O Ollama respondeu com erro " + r.status + ".");
+    return await r.json();
+  } catch (e){
+    if (e.name === "AbortError") throw new Error("O Ollama demorou demais para responder.");
+    if (e instanceof TypeError) throw new Error("Não consegui falar com o Ollama. Confira se ele está aberto neste computador e se a permissão de origem (OLLAMA_ORIGINS) foi configurada.");
+    throw e;
+  } finally { clearTimeout(t); }
+}
+
+export async function testarOllama(){
+  const r = await pedir("/api/tags", null, 8000);
+  const modelos = (r.models || []).map(m => m.name);
+  const alvo = cfgOllama().modelo;
+  const tem = modelos.some(m => m === alvo || m === alvo + ":latest" || m.split(":")[0] === alvo);
+  return { modelos, tem };
+}
+
+function instrucoes(){
+  const h = new Date(), cats = Object.keys(config().orcamento), discs = config().disciplinas;
+  const termos = lista("termo").map(t => `"${t.termo}" → ${t.cat}`).join("; ") || "nenhum";
+  return `Você converte mensagens em português do Brasil para COMANDOS de um app de organização pessoal.
+Hoje é ${DIAS[h.getDay()]}, ${fData(h)}/${h.getFullYear()}.
+Responda só com JSON no formato {"comandos": [...], "resposta": "..."}.
+Cada comando deve seguir EXATAMENTE um destes modelos (troque o que está entre < >):
+- Registre despesa de R$ <valor> com <descrição curta>
+- Registre despesa de R$ <valor> com <descrição curta> ontem
+- Recebi <valor> de <origem>
+- Tenho <prova|trabalho|seminário|substitutiva> de <disciplina> <hoje|amanhã|segunda|terça|quarta|quinta|sexta|sábado|domingo|dia DD/MM> às <HH>h
+- Quais provas estão chegando?
+- Quanto gastei este mês?
+- Qual meu saldo?
+- Toda <dias da semana separados por "e"> tenho <atividade> das <HH>h às <HH>h
+- De segunda a sexta tenho <atividade> das <HH>h às <HH>h
+- Quando eu disser <palavra>, é <categoria>
+- Mostre minha rotina
+- Remover <atividade da rotina>
+- Organize minha semana
+- O que tenho hoje?
+Regras:
+- Se a mensagem tiver várias coisas (ex.: dois gastos), gere um comando para cada uma, na ordem.
+- Valores com vírgula decimal (ex.: 12,50). Horários em formato 24h.
+- Categorias válidas: ${cats.join(", ")}. Disciplinas: ${discs.join(", ")}. Termos da usuária: ${termos}.
+- Nunca invente valores, datas ou horários que a mensagem não disse. Se faltar algo essencial, deixe "comandos" vazio e use "resposta" para perguntar o que falta, em uma frase curta.
+- Se a mensagem não combinar com nenhum modelo, deixe "comandos" vazio e explique em "resposta", em uma frase, o que você consegue fazer.
+- Nunca responda sobre saúde, remédios, doses ou diagnósticos.`;
+}
+
+const ESQUEMA = { type: "object", properties: { comandos: { type: "array", items: { type: "string" } }, resposta: { type: "string" } }, required: ["comandos", "resposta"] };
+
+export async function traduzir(texto){
+  const c = cfgOllama();
+  const r = await pedir("/api/chat", {
+    model: c.modelo, stream: false, format: ESQUEMA, keep_alive: "30m",
+    options: { temperature: 0 },
+    messages: [{ role: "system", content: instrucoes() }, { role: "user", content: texto }]
+  }, 90000);
+  let j; try { j = JSON.parse(r.message?.content || "{}"); } catch { j = {}; }
+  const comandos = Array.isArray(j.comandos) ? j.comandos.filter(s => typeof s === "string" && s.trim()).slice(0, 6) : [];
+  return { comandos, resposta: typeof j.resposta === "string" ? j.resposta.trim() : "" };
+}

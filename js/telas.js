@@ -3,6 +3,7 @@ import { $, esc, norm, brl, DIAS, cap, hoje, dia, fData, fHora, mesmoDia, iso, d
 import { S, lista, config, salvar, apagar, salvarConfig } from "./dados.js";
 import * as G from "./google.js";
 import { interpretar, SUGESTOES, descDias } from "./assistente.js";
+import { cfgOllama, salvarOllama, testarOllama, traduzir, ehSaude } from "./ollama.js";
 
 let render = () => {};
 export const definirRender = fn => { render = fn; };
@@ -317,6 +318,15 @@ T.perfil = () => {
   const cfg = config(), n = S.itens.length;
   return `${cab("Perfil", `<span class="mono">${esc(S.sessao.email)}</span>`)}
   <div class="grade dupla">
+    <section class="cartao"><header><h2>IA local (Ollama)</h2><small>só neste aparelho</small></header>
+      ${(() => { const o = cfgOllama(); return `<form data-form="ollama"><div class="form-msg"></div>
+        <label class="linha" for="o-at"><input id="o-at" type="checkbox" name="ativo" ${o.ativo ? "checked" : ""}> Usar o Ollama quando o assistente não entender</label>
+        <div class="campos"><label for="o-url">Endereço<input id="o-url" name="url" value="${esc(o.url)}" required></label>
+        <label for="o-mod">Modelo<input id="o-mod" name="modelo" value="${esc(o.modelo)}" required></label></div>
+        <div class="linha"><button class="btn sec" type="submit">Salvar</button><button class="btn sec" type="button" data-acao="ollama-testar">Testar conexão</button></div>
+        ${S.ui.ollamaStatus ? `<div class="msg ${S.ui.ollamaStatus.ok ? "ok" : "erro"}">${esc(S.ui.ollamaStatus.texto)}</div>` : ""}</form>`; })()}
+      <p class="nota">O Ollama roda no seu computador. A frase vai só até ele, nunca para a internet. Assuntos de saúde nunca são enviados. No celular, deixe desligado.</p>
+    </section>
     <section class="cartao"><header><h2>Segurança</h2></header>
       <div class="item"><span>Dados sensíveis</span><span class="pill ok">cifrados no aparelho</span></div>
       <div class="item"><span>Verificação em duas etapas</span><span class="pill neutro">próxima atualização</span></div>
@@ -364,10 +374,27 @@ async function enviarChat(texto){
   if (!texto.trim()) return;
   S.ui.chat.push({ de: "eu", texto });
   const r = interpretar(texto, ctxAssistente);
-  S.ui.chat.push({ de: "ela", texto: r.resp, previa: r.previa ? { ...r.previa, estado: "pendente" } : null });
-  render();
-  const c = $("#chat"); if (c) c.scrollTop = c.scrollHeight;
-  $("#c-in")?.focus();
+  const rolar = () => { render(); const c = $("#chat"); if (c) c.scrollTop = c.scrollHeight; $("#c-in")?.focus(); };
+  const ia = cfgOllama();
+  if (!r.naoEntendi || !ia.ativo){ S.ui.chat.push({ de: "ela", texto: r.resp, previa: r.previa ? { ...r.previa, estado: "pendente" } : null }); return rolar(); }
+  if (ehSaude(texto)){ S.ui.chat.push({ de: "ela", texto: "Assuntos de saúde não vão para a IA. Registre em Saúde. Dúvidas clínicas, leve ao seu médico." }); return rolar(); }
+  const espera = { de: "ela", texto: "Pensando com a IA local…" }; S.ui.chat.push(espera); rolar();
+  try {
+    const t = await traduzir(texto);
+    S.ui.chat.splice(S.ui.chat.indexOf(espera), 1);
+    let algum = false;
+    for (const cmd of t.comandos){
+      const r2 = interpretar(cmd, ctxAssistente);
+      if (r2.naoEntendi) continue;
+      algum = true;
+      S.ui.chat.push({ de: "ela", texto: `Entendi como: "${cmd}"\n\n${r2.resp}`, previa: r2.previa ? { ...r2.previa, estado: "pendente" } : null });
+    }
+    if (!algum) S.ui.chat.push({ de: "ela", texto: t.resposta || r.resp });
+  } catch (e){
+    S.ui.chat.splice(S.ui.chat.indexOf(espera), 1);
+    S.ui.chat.push({ de: "ela", texto: e.message + "\n\n" + r.resp });
+  }
+  rolar();
 }
 async function sincronizarGoogle(primeiraVez){
   const g = S.google;
@@ -386,6 +413,14 @@ export const acoes = {
   "google-conectar": () => sincronizarGoogle(true),
   "google-sync": () => sincronizarGoogle(false),
   "google-sair": () => { G.revogar(S.google.token); S.google = { token: null, expira: 0, agendas: [], eventos: [], ultimaSync: null, erro: null, carregando: false }; aviso("ok", "Google Agenda desconectado. Os eventos foram apagados desta sessão."); },
+  "ollama-testar": async () => {
+    S.ui.ollamaStatus = { ok: true, texto: "Testando…" }; render();
+    try {
+      const t = await testarOllama(), m = cfgOllama().modelo;
+      S.ui.ollamaStatus = t.tem ? { ok: true, texto: `Conectado. Modelo ${m} encontrado.` } : { ok: false, texto: `Conectado, mas o modelo ${m} não está instalado. Modelos no seu computador: ${t.modelos.join(", ") || "nenhum"}. No Terminal: ollama pull ${m}` };
+    } catch (e){ S.ui.ollamaStatus = { ok: false, texto: e.message }; }
+    render();
+  },
   apagar: async el => { await apagar(el.dataset.id); render(); },
   feita: async el => { const a = lista("aval").find(x => x.id === el.dataset.id); const { id, ...d } = a; await salvar("aval", { ...d, feita: true }, id); aviso("ok", `${a.tipo} de ${a.disc} marcada como feita.`); },
   tomar: async el => { await salvar("dose", { medId: el.dataset.id, data: iso(hoje()), hora: fHora(new Date()) }); render(); },
@@ -441,5 +476,6 @@ export const formularios = {
   treino: async (fd, form) => { const min = parseInt(fd.get("min"), 10); if (!(min > 0)) return erroForm(form, "Digite a duração em minutos."); await salvar("treino", { data: comData(fd.get("data") || iso(hoje()), "12:00"), tipo: String(fd.get("tipo")).trim(), min }); aviso("ok", "Treino registrado."); },
   refeicao: async fd => { await salvar("refeicao", { data: iso(hoje()), quando: String(fd.get("quando")), texto: String(fd.get("texto")).trim() }); aviso("ok", "Refeição registrada."); },
   chat: async (fd, form) => { const t = String(fd.get("t")); form.reset(); await enviarChat(t); },
+  ollama: async fd => { salvarOllama({ ativo: fd.get("ativo") === "on", url: String(fd.get("url")).trim() || "http://localhost:11434", modelo: String(fd.get("modelo")).trim() || "qwen2.5:3b" }); S.ui.ollamaStatus = null; aviso("ok", "Configuração da IA local salva neste aparelho."); },
   logout: async fd => { await salvarConfig({ logoutMin: Number(fd.get("min")) }); aviso("ok", "Tempo de logout automático salvo."); }
 };
