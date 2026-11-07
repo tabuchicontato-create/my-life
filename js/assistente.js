@@ -144,7 +144,7 @@ function lerEstudo(n, base){
   if (!disc) return { resp: `Estudou qual disciplina? Ex.: "Estudei 2 h de ${config().disciplinas[0] || "Anatomia"}".` };
   if (!min) return { resp: `Quanto tempo você estudou ${disc}? Ex.: "Estudei 1h30 de ${disc}".` };
   const horas = Math.round(min / 60 * 100) / 100;
-  const quando = /\bontem\b/.test(n) ? dia(-1, 12) : new Date();
+  const quando = /\bontem\b/.test(n) ? dia(-1, 12) : planejado && /\bamanha\b/.test(n) ? dia(1, 12) : new Date();
   return { resp: planejado ? `Você disse que vai estudar. Confirme agora para já contar as ${horas.toLocaleString("pt-BR")} h, ou só depois de estudar.` : "Confere antes de eu salvar?", previa: { acao: "estudo", dados: { disc, horas, data: quando.toISOString() }, campos: { "Disciplina": disc + (config().disciplinas.includes(disc) ? "" : " (fora da sua lista)"), "Tempo": `${horas.toLocaleString("pt-BR")} h`, "Quando": quandoTxt(quando) } } };
 }
 function lerDisciplina(n, base){
@@ -201,7 +201,14 @@ function lerDose(n){
   const meds = lista("med");
   const med = meds.find(x => norm(x.nome).split(/\s+/).some(p => p.length >= 4 && n.includes(p)));
   if (med) return { resp: "Confere antes de eu salvar?", previa: { acao: "dose", dados: { medId: med.id, data: iso(hoje()), hora: fHora(new Date()) }, campos: { "Remédio": med.nome, "Tomado": "Hoje, " + fHora(new Date()) } } };
-  if (!/\b(remedio|medicamento|comprimido|pilula|anticoncepcional|capsula|suplemento|vitamina)\b/.test(n)) return null;
+  // Remédio que não está cadastrado ("tomei uma dipirona"): cadastra como uso eventual e marca a dose.
+  const x = n.match(/\btomei\s+(?:um|uma|o|a|1|meio|meia|dois|duas|2)?\s*(?:comprimidos?\s+de\s+|gotas\s+de\s+|capsulas?\s+de\s+)?([a-z][a-z0-9-]{3,})(?:\s+(\d+\s*(?:mg|ml|g|gotas)))?/);
+  const novo = x && !/^(agua|cafe|banho|suco|leite|cerveja|vinho|refri|refrigerante|susto|chuva|sorvete|sopa|vergonha|coragem|conta|vacina|cuidado|decisao|cha|uber|onibus|metro|remedio|remedios|medicamento|medicamentos|comprimido|comprimidos|pilula|anticoncepcional|capsula|vitamina|suplemento)$/.test(x[1]);
+  if (!novo && !/\b(remedio|medicamento|comprimido|pilula|anticoncepcional|capsula|suplemento|vitamina)\b/.test(n)) return null;
+  if (novo){
+    const nome = cap(x[1] + (x[2] ? " " + x[2] : ""));
+    return { resp: `${nome} não está nos seus remédios. Cadastro como uso eventual e marco como tomado agora? Eu só registro, não recomendo doses.`, previa: { acao: "dose-nova", dados: { nome, hora: fHora(new Date()) }, campos: { "Remédio": `${nome} (novo, uso eventual)`, "Tomado": "Hoje, " + fHora(new Date()) } } };
+  }
   if (!meds.length) return { resp: "Você ainda não tem remédios cadastrados. Ex.: \"Comecei a tomar Metformina às 8h\"." };
   if (meds.length === 1) return lerDose(n + " " + norm(meds[0].nome));
   return { resp: `Qual deles? ${meds.map(x => x.nome).join(", ")}. Ex.: "Tomei a ${meds[0].nome}".` };
@@ -263,7 +270,7 @@ function lerRefeicao(n, base){
     return { resp: "Confere antes de eu salvar?", previa: { acao: "fin", dados: { tipo: "despesa", valor, desc: quando, cat: categoriaPor("comida"), data: d.toISOString() }, campos: { "Tipo": "Despesa", "Valor": brl(valor), "Descrição": quando, "Categoria": categoriaPor("comida"), "Data": rotuloDia(d) + ", " + fData(d) } } };
   }
   const ini = m.index + q.length;
-  const t = trecho(base, ini).replace(/^(eu\s+)?(comi|almocei|jantei|lanchei)\s*/i, "").replace(/^(de|o|a|um|uma|uns|umas|foi|:)\s+/i, "").replace(/\s+(hoje|agora)$/i, "");
+  const t = trecho(base, ini).replace(/^(e\s+)?(eu\s+)?(comi|almocei|jantei|lanchei)?\s*/i, "").replace(/^(de|o|a|um|uma|uns|umas|foi|:)\s+/i, "").replace(/\s+(hoje|agora)$/i, "");
   if (!t) return { resp: `O que você comeu no ${quando.toLowerCase()}? Ex.: "Almocei arroz, feijão e frango".` };
   return { resp: "Confere antes de eu salvar? (só registro, sem calorias)", previa: { acao: "refeicao", dados: { data: iso(hoje()), quando, texto: t }, campos: { "Refeição": quando, "O que": t, "Quando": "Hoje, " + fData(hoje()) } } };
 }
@@ -276,10 +283,18 @@ export function descDias(ds){
 
 // ctx: { proximas(), eventosDoDia(d), gastoPorCat(), saldoMes() }
 // Mensagem com mais de um assunto: separa em partes e entende cada uma.
-const SEPARA = /[.!?]+\s+|,?\s+e\s+(?=(?:depois|tomei|bebi|fiz|estudei|paguei|gastei|comi|almocei|jantei|tive|recebi|ganhei|corri|treinei)\b)|[,;]\s+(?=(?:e\s+)?(?:acho que|depois|tamb[eé]m|al[eé]m disso|a[ií]|ent[aã]o|mas|hoje|ontem|amanh[aã]|j[aá]|eu|vou|preciso|quero|tenho|fiz|estudei|paguei|gastei|bebi|tomei)\b)/i;
+// (\b não funciona depois de letra acentuada, como em "amanhã"; por isso FB.)
+const FB = "(?![a-z0-9à-ÿ])";
+const VERBOS = "tomei|bebi|estudei|paguei|gastei|almocei|jantei|lanchei|recebi|ganhei|corri|treinei|comprei|malhei|caminhei";
+const SEPARA = new RegExp(
+  "[.!?]+\\s+" +
+  "|,?\\s+e\\s+(?=(?:depois|fiz|tive|" + VERBOS + ")" + FB + ")" +
+  "|[,;]\\s+(?=(?:e\\s+)?(?:acho que|depois|tamb[eé]m|al[eé]m disso|a[ií]|ent[aã]o|mas|hoje|ontem|amanh[aã]|j[aá]|eu|vou|preciso|quero|tenho|estou|t[oô]|fiz|tive|" + VERBOS + ")" + FB + ")" +
+  "|\\s+(?=(?:" + VERBOS + ")" + FB + ")" +
+  "|\\s+(?=(?:amanh[aã]|hoje|ontem|depois)\\s+(?:eu\\s+)?(?:vou|tenho|preciso|quero|estudei|fiz)" + FB + ")", "i");
 export function interpretarVarias(texto, ctx){
   const partes = texto.split(SEPARA).map(s => s.trim()).filter(s => s.length > 2)
-    .reduce((acc, s) => { const ult = acc[acc.length - 1]; if (ult && ult.split(/\s+/).length < 2) acc[acc.length - 1] = ult + " e " + s; else acc.push(s); return acc; }, []);
+    .reduce((acc, s) => { const ult = acc[acc.length - 1]; if (ult && (ult.split(/\s+/).length < 2 || s.split(/\s+/).length < 2)) acc[acc.length - 1] = ult + " e " + s; else acc.push(s); return acc; }, []);
   if (partes.length < 2) return [interpretar(texto, ctx)];
   const n = norm(texto);
   const t = n.match(/\btenho\s+(?:uma?\s+)?([a-z]{4,})/);
