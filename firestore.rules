@@ -1,0 +1,32 @@
+rules_version = '2';
+// MY LIFE — regras do banco.
+// Cada usuária só lê e grava o que é dela. Registros só depois de confirmar o e-mail,
+// e só aceitam conteúdo já cifrado (começando com "v1:"). Todo o resto é negado.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function dona(uid) { return request.auth != null && request.auth.uid == uid; }
+    function verificada() { return request.auth.token.email_verified == true; }
+
+    match /users/{uid} {
+      allow read, delete: if dona(uid);
+      allow create, update: if dona(uid)
+        && request.resource.data.keys().hasOnly(['versao', 'cofre', 'criadoEm'])
+        && request.resource.data.cofre is map
+        && request.resource.data.cofre.keys().hasOnly(['geracao', 'porSenha', 'porRecuperacao'])
+        && request.resource.data.cofre.porSenha is string
+        && request.resource.data.cofre.geracao is int;
+
+      match /itens/{item} {
+        allow read, delete: if dona(uid) && verificada();
+        allow create, update: if dona(uid) && verificada()
+          && request.resource.data.keys().hasOnly(['colecao', 'conteudo', 'geracao', 'estado', 'atualizadoEm'])
+          && request.resource.data.colecao is string && request.resource.data.colecao.size() < 40
+          && request.resource.data.conteudo is string
+          && request.resource.data.conteudo.matches('^v1:[A-Za-z0-9+/=]+[.][A-Za-z0-9+/=]+$')
+          && request.resource.data.conteudo.size() < 200000
+          && request.resource.data.geracao is int
+          && request.resource.data.estado in ['ativo', 'bloqueado'];
+      }
+    }
+  }
+}
