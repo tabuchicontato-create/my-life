@@ -2,7 +2,7 @@
 import { $, esc, norm, brl, DIAS, cap, hoje, dia, fData, fHora, mesmoDia, iso, deIso, diasAte, rotuloDia, mesmoMes, valorBR, msgHtml, erroForm } from "./util.js";
 import { S, lista, config, salvar, apagar, salvarConfig } from "./dados.js";
 import * as G from "./google.js";
-import { interpretar, SUGESTOES, descDias } from "./assistente.js";
+import { interpretar, interpretarVarias, SUGESTOES, descDias } from "./assistente.js";
 import { cfgOllama, salvarOllama, testarOllama, traduzir, ehSaude } from "./ollama.js";
 
 let render = () => {};
@@ -373,11 +373,15 @@ export function telaModulo(){ return (T[S.ui.aba] || T.inicio)(); }
 async function enviarChat(texto){
   if (!texto.trim()) return;
   S.ui.chat.push({ de: "eu", texto });
-  const r = interpretar(texto, ctxAssistente);
   const rolar = () => { render(); const c = $("#chat"); if (c) c.scrollTop = c.scrollHeight; $("#c-in")?.focus(); };
+  // Cada parte da mensagem é respondida em ordem; o que as regras não entendem pode ir para a IA.
+  for (const r of interpretarVarias(texto, ctxAssistente)) await responderParte(r, r.parte || texto, rolar);
+  rolar();
+}
+async function responderParte(r, texto, rolar){
   const ia = cfgOllama();
-  if (!r.naoEntendi || !ia.ativo){ S.ui.chat.push({ de: "ela", texto: r.resp, previa: r.previa ? { ...r.previa, estado: "pendente" } : null }); return rolar(); }
-  if (ehSaude(texto)){ S.ui.chat.push({ de: "ela", texto: "Não entendi. Assuntos de saúde não vão para a IA, então tente um destes formatos:\n• Estou com dor de cabeça forte\n• Bebi 2 copos de água / Fiz 30 min de caminhada\n• Supino 20 kg 3x10 / Almocei arroz e frango\n• Comecei a tomar Metformina às 8h / Tomei a Metformina\n• Consulta com ginecologista dia 20/11 às 15h\n• Exame de sangue dia 15/11\nDúvidas clínicas, leve ao seu médico." }); return rolar(); }
+  if (!r.naoEntendi || !ia.ativo){ S.ui.chat.push({ de: "ela", texto: r.resp, previa: r.previa ? { ...r.previa, estado: "pendente" } : null }); return; }
+  if (ehSaude(texto)){ S.ui.chat.push({ de: "ela", texto: "Não entendi. Assuntos de saúde não vão para a IA, então tente um destes formatos:\n• Estou com dor de cabeça forte\n• Bebi 2 copos de água / Fiz 30 min de caminhada\n• Supino 20 kg 3x10 / Almocei arroz e frango\n• Comecei a tomar Metformina às 8h / Tomei a Metformina\n• Consulta com ginecologista dia 20/11 às 15h\n• Exame de sangue dia 15/11\nDúvidas clínicas, leve ao seu médico." }); return; }
   const espera = { de: "ela", texto: "Pensando com a IA local…" }; S.ui.chat.push(espera); rolar();
   try {
     const t = await traduzir(texto);
@@ -394,7 +398,6 @@ async function enviarChat(texto){
     S.ui.chat.splice(S.ui.chat.indexOf(espera), 1);
     S.ui.chat.push({ de: "ela", texto: e.message + "\n\n" + r.resp });
   }
-  rolar();
 }
 async function sincronizarGoogle(primeiraVez){
   const g = S.google;
