@@ -377,7 +377,7 @@ async function enviarChat(texto){
   const rolar = () => { render(); const c = $("#chat"); if (c) c.scrollTop = c.scrollHeight; $("#c-in")?.focus(); };
   const ia = cfgOllama();
   if (!r.naoEntendi || !ia.ativo){ S.ui.chat.push({ de: "ela", texto: r.resp, previa: r.previa ? { ...r.previa, estado: "pendente" } : null }); return rolar(); }
-  if (ehSaude(texto)){ S.ui.chat.push({ de: "ela", texto: "Não entendi. Assuntos de saúde não vão para a IA, então tente um destes formatos:\n• Estou com dor de cabeça forte\n• Bebi 2 copos de água\n• Fiz 30 min de caminhada\nDúvidas clínicas, leve ao seu médico." }); return rolar(); }
+  if (ehSaude(texto)){ S.ui.chat.push({ de: "ela", texto: "Não entendi. Assuntos de saúde não vão para a IA, então tente um destes formatos:\n• Estou com dor de cabeça forte\n• Bebi 2 copos de água / Fiz 30 min de caminhada\n• Supino 20 kg 3x10 / Almocei arroz e frango\n• Comecei a tomar Metformina às 8h / Tomei a Metformina\n• Consulta com ginecologista dia 20/11 às 15h\n• Exame de sangue dia 15/11\nDúvidas clínicas, leve ao seu médico." }); return rolar(); }
   const espera = { de: "ela", texto: "Pensando com a IA local…" }; S.ui.chat.push(espera); rolar();
   try {
     const t = await traduzir(texto);
@@ -440,8 +440,13 @@ export const acoes = {
       if (p.acao === "sintoma") await salvar("sintoma", p.dados);
       if (p.acao === "treino") await salvar("treino", p.dados);
       if (p.acao === "agua"){ const hj = iso(hoje()); const a = lista("agua").find(x => x.data === hj); p.dados.total = (a?.copos || 0) + p.dados.copos; await salvar("agua", { data: hj, copos: p.dados.total }, a?.id); }
+      for (const c of ["estudo", "med", "dose", "consulta", "exame", "carga", "refeicao"]) if (p.acao === c) await salvar(c, p.dados);
+      if (p.acao === "orcamento") await salvarConfig({ orcamento: { ...config().orcamento, [p.dados.cat]: p.dados.valor } });
+      if (p.acao === "disciplina" && !config().disciplinas.includes(p.dados.nome)) await salvarConfig({ disciplinas: [...config().disciplinas, p.dados.nome] });
+      if (p.acao === "aval-feita"){ const a = lista("aval").find(x => x.id === p.dados.id); if (a){ const { id, ...d } = a; await salvar("aval", { ...d, feita: true }, id); } }
+      if (p.acao === "exame-status"){ const x = lista("exame").find(e => e.id === p.dados.id); if (x){ const { id, ...d } = x; await salvar("exame", { ...d, status: p.dados.status }, id); } }
       p.estado = "salvo";
-      S.ui.chat.push({ de: "ela", texto: { fin: "Pronto, lançamento salvo em Finanças.", aval: "Pronto, salvo em Faculdade e já aparece na Agenda.", rotina: "Pronto, entrou na sua rotina e já aparece na Agenda.", termo: `Pronto. Quando você registrar um gasto com "${p.dados.termo}", vou usar a categoria ${p.dados.cat}.`, "tirar-rotina": "Removido da sua rotina.", sintoma: "Pronto, anotado no seu diário de sintomas (Saúde → Tratamento). Leve o diário à consulta.", treino: "Pronto, treino registrado em Saúde → Treino.", agua: `Pronto. Hoje você já tomou ${p.dados.total} copo(s) de água.` }[p.acao] });
+      S.ui.chat.push({ de: "ela", texto: { fin: "Pronto, lançamento salvo em Finanças.", aval: "Pronto, salvo em Faculdade e já aparece na Agenda.", rotina: "Pronto, entrou na sua rotina e já aparece na Agenda.", termo: `Pronto. Quando você registrar um gasto com "${p.dados.termo}", vou usar a categoria ${p.dados.cat}.`, "tirar-rotina": "Removido da sua rotina.", sintoma: "Pronto, anotado no seu diário de sintomas (Saúde → Tratamento). Leve o diário à consulta.", treino: "Pronto, treino registrado em Saúde → Treino.", agua: `Pronto. Hoje você já tomou ${p.dados.total} copo(s) de água.`, estudo: "Pronto, horas de estudo registradas em Faculdade.", orcamento: `Pronto, limite de ${p.dados.cat} atualizado em Finanças.`, disciplina: `Pronto, ${p.dados.nome} entrou na sua lista de disciplinas.`, "aval-feita": "Pronto, marcada como feita em Faculdade.", med: "Pronto, remédio cadastrado em Saúde → Tratamento (só registro).", dose: "Pronto, dose marcada como tomada hoje.", consulta: "Pronto, consulta salva em Saúde e já aparece na Agenda.", exame: "Pronto, exame salvo em Saúde → Tratamento.", "exame-status": "Pronto, situação do exame atualizada.", carga: "Pronto, carga registrada em Saúde → Treino.", refeicao: "Pronto, refeição registrada em Saúde → Alimentação e água." }[p.acao] });
     } catch (e){ p.estado = "pendente"; S.ui.chat.push({ de: "ela", texto: "Não consegui salvar: " + e.message }); }
     render(); const c = $("#chat"); if (c) c.scrollTop = c.scrollHeight;
   },
