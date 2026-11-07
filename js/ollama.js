@@ -67,7 +67,20 @@ Regras:
 - Categorias válidas: ${cats.join(", ")}. Disciplinas: ${discs.join(", ")}. Termos da usuária: ${termos}.
 - Nunca invente valores, datas ou horários que a mensagem não disse. Se faltar algo essencial, deixe "comandos" vazio e use "resposta" para perguntar o que falta, em uma frase curta.
 - Se a mensagem não combinar com nenhum modelo, deixe "comandos" vazio e explique em "resposta", em uma frase, o que você consegue fazer.
-- Nunca responda sobre saúde, remédios, doses ou diagnósticos.`;
+- Nunca responda sobre saúde, remédios, doses ou diagnósticos.
+Exemplos (a mensagem pode usar gíria; converta mesmo assim):
+Mensagem: almocei e paguei 25 pila
+JSON: {"comandos": ["Registre despesa de R$ 25 com almoço"], "resposta": ""}
+Mensagem: gastei 12,50 na padaria e 40 de gasolina
+JSON: {"comandos": ["Registre despesa de R$ 12,50 com padaria", "Registre despesa de R$ 40 com gasolina"], "resposta": ""}
+Mensagem: ontem torrei 60 conto no cinema
+JSON: {"comandos": ["Registre despesa de R$ 60 com cinema ontem"], "resposta": ""}
+Mensagem: caiu 300 do estágio
+JSON: {"comandos": ["Recebi 300 de estágio"], "resposta": ""}
+Mensagem: quinta tem prova de histo às 10
+JSON: {"comandos": ["Tenho prova de Histologia quinta às 10h"], "resposta": ""}
+Mensagem: comprei umas coisas
+JSON: {"comandos": [], "resposta": "Quanto você gastou e com o quê?"}`;
 }
 
 const ESQUEMA = { type: "object", properties: { comandos: { type: "array", items: { type: "string" } }, resposta: { type: "string" } }, required: ["comandos", "resposta"] };
