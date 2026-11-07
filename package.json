@@ -4,7 +4,7 @@
   "type": "module",
   "description": "MY LIFE — testes das regras de acesso (o app em si não precisa de build).",
   "scripts": {
-    "test": "firebase emulators:exec --only firestore --project demo-mylife \"node --test testes/\"",
+    "test": "firebase emulators:exec --only firestore --project demo-mylife \"node --test testes/regras.test.mjs\"",
     "check": "node --check js/*.js 2>/dev/null; for f in js/*.js; do node --input-type=module --check < $f || exit 1; done"
   },
   "devDependencies": {
