@@ -16,7 +16,9 @@ Ele faz o link de "Esqueci a senha" abrir o MY LIFE em vez de abrir a página pa
 3. No rodapé da janela, clique em **Personalizar URL de ação**.
 4. Cole exatamente: `https://tabuchicontato-create.github.io/my-life/` e clique em **Salvar**.
    O endereço vale para todos os modelos.
-5. Ainda em **Modelos**, no canto inferior, troque o **Idioma do modelo** para **Português (Brasil)** e salve.
+5. O idioma dos e-mails já está em **Português (Brasil)**.
+
+> Em 07/11, o Firebase respondeu "Ocorreu um erro ao atualizar o URL acionável" ao salvar. É uma falha do lado do Firebase. Tente de novo mais tarde. Para conferir se salvou, abra **Redefinição de senha**: o link de exemplo deve começar com `https://tabuchicontato-create.github.io/my-life/`.
 
 ---
 
