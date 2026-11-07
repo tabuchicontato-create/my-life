@@ -377,7 +377,7 @@ async function enviarChat(texto){
   const rolar = () => { render(); const c = $("#chat"); if (c) c.scrollTop = c.scrollHeight; $("#c-in")?.focus(); };
   const ia = cfgOllama();
   if (!r.naoEntendi || !ia.ativo){ S.ui.chat.push({ de: "ela", texto: r.resp, previa: r.previa ? { ...r.previa, estado: "pendente" } : null }); return rolar(); }
-  if (ehSaude(texto)){ S.ui.chat.push({ de: "ela", texto: "Assuntos de saúde não vão para a IA. Registre em Saúde. Dúvidas clínicas, leve ao seu médico." }); return rolar(); }
+  if (ehSaude(texto)){ S.ui.chat.push({ de: "ela", texto: "Não entendi. Assuntos de saúde não vão para a IA, então tente um destes formatos:\n• Estou com dor de cabeça forte\n• Bebi 2 copos de água\n• Fiz 30 min de caminhada\nDúvidas clínicas, leve ao seu médico." }); return rolar(); }
   const espera = { de: "ela", texto: "Pensando com a IA local…" }; S.ui.chat.push(espera); rolar();
   try {
     const t = await traduzir(texto);
@@ -437,8 +437,11 @@ export const acoes = {
       if (p.acao === "rotina") await salvar("rotina", p.dados);
       if (p.acao === "termo"){ for (const t of lista("termo").filter(t => norm(t.termo) === norm(p.dados.termo))) await apagar(t.id); await salvar("termo", p.dados); }
       if (p.acao === "tirar-rotina") await apagar(p.dados.id);
+      if (p.acao === "sintoma") await salvar("sintoma", p.dados);
+      if (p.acao === "treino") await salvar("treino", p.dados);
+      if (p.acao === "agua"){ const hj = iso(hoje()); const a = lista("agua").find(x => x.data === hj); p.dados.total = (a?.copos || 0) + p.dados.copos; await salvar("agua", { data: hj, copos: p.dados.total }, a?.id); }
       p.estado = "salvo";
-      S.ui.chat.push({ de: "ela", texto: { fin: "Pronto, lançamento salvo em Finanças.", aval: "Pronto, salvo em Faculdade e já aparece na Agenda.", rotina: "Pronto, entrou na sua rotina e já aparece na Agenda.", termo: `Pronto. Quando você registrar um gasto com "${p.dados.termo}", vou usar a categoria ${p.dados.cat}.`, "tirar-rotina": "Removido da sua rotina." }[p.acao] });
+      S.ui.chat.push({ de: "ela", texto: { fin: "Pronto, lançamento salvo em Finanças.", aval: "Pronto, salvo em Faculdade e já aparece na Agenda.", rotina: "Pronto, entrou na sua rotina e já aparece na Agenda.", termo: `Pronto. Quando você registrar um gasto com "${p.dados.termo}", vou usar a categoria ${p.dados.cat}.`, "tirar-rotina": "Removido da sua rotina.", sintoma: "Pronto, anotado no seu diário de sintomas (Saúde → Tratamento). Leve o diário à consulta.", treino: "Pronto, treino registrado em Saúde → Treino.", agua: `Pronto. Hoje você já tomou ${p.dados.total} copo(s) de água.` }[p.acao] });
     } catch (e){ p.estado = "pendente"; S.ui.chat.push({ de: "ela", texto: "Não consegui salvar: " + e.message }); }
     render(); const c = $("#chat"); if (c) c.scrollTop = c.scrollHeight;
   },
