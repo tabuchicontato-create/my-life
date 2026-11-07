@@ -127,20 +127,25 @@ function acharDisc(t){
   const pal = n.split(/\s+/).filter(p => p.length >= 4);
   return discs.find(d => n.includes(norm(d))) || discs.find(d => norm(d).split(/\s+/).some(q => q.length >= 4 && pal.some(p => q.slice(0, 5) === p.slice(0, 5)))) || null;
 }
+// Assunto citado em outra parte da mesma mensagem ("toda segunda tenho tutoria, vou estudar 2h pra próxima").
+let assuntoDaMensagem = null;
 function lerEstudo(n, base){
-  if (!/\b(estudei|estudando|revisei|li)\b/.test(n) || /\b(prova|seminario)\b.*\b(amanha|dia|segunda|terca|quarta|quinta|sexta)\b/.test(n)) return null;
+  if (!/\b(estudei|estudando|revisei|li|estudar|estudo)\b/.test(n) || /\b(prova|seminario)\b.*\b(amanha|dia|segunda|terca|quarta|quinta|sexta)\b/.test(n)) return null;
+  if (/^(?:eu\s+)?(?:tod[ao]s?\b|de segunda a sexta|nos dias uteis)/.test(n)) return null; // é rotina
   if (/\bli\b/.test(n) && !/\b(capitulo|apostila|livro|artigo|resumo|materia)\b/.test(n)) return null;
   const min = duracaoMin(n);
+  const planejado = /\b(vou|vamos|pretendo|quero|preciso|devo|tenho que)\b.*\bestudar\b/.test(n);
   let disc = acharDisc(n);
   if (!disc){
-    const mm = n.match(/\b(?:estudei|revisei|li)\s+(?:\S+\s+){0,3}?(?:de|da|do|sobre|em)\s+([a-z ]+?)(?:\s+(?:hoje|ontem|por|durante|\d).*)?$/);
-    disc = mm ? cap(mm[1].trim()) : null;
+    const mm = n.match(/\b(?:estudei|revisei|li|estudar|estudando)\s+(?:\S+\s+){0,3}?(?:de|da|do|sobre|em)\s+([a-z ]+?)(?:\s+(?:hoje|ontem|por|durante|\d).*)?$/);
+    disc = mm && !/^(essa|esta|a|o|proxima|semana)\b/.test(mm[1].trim()) ? cap(mm[1].trim()) : null;
   }
+  if (!disc && assuntoDaMensagem) disc = assuntoDaMensagem;
   if (!disc) return { resp: `Estudou qual disciplina? Ex.: "Estudei 2 h de ${config().disciplinas[0] || "Anatomia"}".` };
   if (!min) return { resp: `Quanto tempo você estudou ${disc}? Ex.: "Estudei 1h30 de ${disc}".` };
   const horas = Math.round(min / 60 * 100) / 100;
   const quando = /\bontem\b/.test(n) ? dia(-1, 12) : new Date();
-  return { resp: "Confere antes de eu salvar?", previa: { acao: "estudo", dados: { disc, horas, data: quando.toISOString() }, campos: { "Disciplina": disc + (config().disciplinas.includes(disc) ? "" : " (fora da sua lista)"), "Tempo": `${horas.toLocaleString("pt-BR")} h`, "Quando": quandoTxt(quando) } } };
+  return { resp: planejado ? `Você disse que vai estudar. Confirme agora para já contar as ${horas.toLocaleString("pt-BR")} h, ou só depois de estudar.` : "Confere antes de eu salvar?", previa: { acao: "estudo", dados: { disc, horas, data: quando.toISOString() }, campos: { "Disciplina": disc + (config().disciplinas.includes(disc) ? "" : " (fora da sua lista)"), "Tempo": `${horas.toLocaleString("pt-BR")} h`, "Quando": quandoTxt(quando) } } };
 }
 function lerDisciplina(n, base){
   const m = n.match(/\b(?:adicion\w*|cadastr\w*|inclu\w*|nova|novo|criar?)\s+(?:a\s+|uma\s+)?(?:materia|disciplina)\s+(?:de\s+|chamada\s+)?(.+)$/);
@@ -270,6 +275,22 @@ export function descDias(ds){
 }
 
 // ctx: { proximas(), eventosDoDia(d), gastoPorCat(), saldoMes() }
+// Mensagem com mais de um assunto: separa em partes e entende cada uma.
+const SEPARA = /[.!?]+\s+|,?\s+e\s+(?=(?:depois|tomei|bebi|fiz|estudei|paguei|gastei|comi|almocei|jantei|tive|recebi|ganhei|corri|treinei)\b)|[,;]\s+(?=(?:e\s+)?(?:acho que|depois|tamb[eé]m|al[eé]m disso|a[ií]|ent[aã]o|mas|hoje|ontem|amanh[aã]|j[aá]|eu|vou|preciso|quero|tenho|fiz|estudei|paguei|gastei|bebi|tomei)\b)/i;
+export function interpretarVarias(texto, ctx){
+  const partes = texto.split(SEPARA).map(s => s.trim()).filter(s => s.length > 2)
+    .reduce((acc, s) => { const ult = acc[acc.length - 1]; if (ult && ult.split(/\s+/).length < 2) acc[acc.length - 1] = ult + " e " + s; else acc.push(s); return acc; }, []);
+  if (partes.length < 2) return [interpretar(texto, ctx)];
+  const n = norm(texto);
+  const t = n.match(/\btenho\s+(?:uma?\s+)?([a-z]{4,})/);
+  assuntoDaMensagem = acharDisc(n) || (t && !/^(prova|trabalho|seminario|substitutiva|consulta|exame|que)$/.test(t[1]) ? cap(t[1]) : null);
+  try {
+    const rs = partes.map(p => ({ p, r: interpretar(p, ctx) }));
+    if (rs.every(x => x.r.naoEntendi)) return [interpretar(texto, ctx)];
+    return rs.map(({ p, r }) => r.naoEntendi ? { naoEntendi: true, parte: p, resp: `Não entendi esta parte: "${p}"` } : r);
+  } finally { assuntoDaMensagem = null; }
+}
+
 export function interpretar(texto, ctx){
   const n = norm(texto).replace(/\s+/g, " ").trim();
   if (!n) return { resp: "Escreva um comando. Toque numa sugestão para ver exemplos." };
@@ -351,20 +372,21 @@ export function interpretar(texto, ctx){
     else if (/fins? de semana/.test(n)) dsel = [0, 6];
     else DIAS_N.forEach((dn, i) => { if (new RegExp("\\b" + dn).test(n)) dsel.push(i); });
     if (!dsel.length) return { resp: "Em quais dias? Ex.: \"Toda terça e quinta tenho estágio das 14h às 17h\"." };
-    const t = n.match(/(?:das|de|as|a partir das)\s*(\d{1,2})(?:[:h](\d{2}))?\s*h?(?:\s*(?:as|ate|a)\s*(\d{1,2})(?:[:h](\d{2}))?\s*h?)?/);
-    if (!t) return { resp: "Em que horário? Ex.: \"...das 7h às 8h\"." };
+    let titulo = texto
+      .replace(/^\s*rotina:\s*/i, "").replace(/^\s*eu\s+/i, "")
+      .replace(/tod[ao]s?\s+(os\s+|as\s+)?dias?|todo santo dia|de segunda a sexta([- ]feira)?|nos dias úteis|nos dias uteis|nos fins? de semana|fins? de semana/gi, "")
+      .replace(/\b(tod[ao]s?\s+(as\s+|os\s+)?|às\s+|aos?\s+)?(segunda|terça|terca|quarta|quinta|sexta|sábado|sabado|domingo)s?([- ]feiras?)?(\s*(,|\be\b)\s*)?/gi, "")
+      .replace(/\b(das|de|às|as|a partir das)\s*\d{1,2}([:h]\d{2})?\s*h?(\s*(às|as|até|ate|a)\s*\d{1,2}([:h]\d{2})?\s*h?)?/gi, "")
+      .replace(/^\s*(eu\s+)?(tenho|faço|faco|vou\s+(pra|para|ao|à|a|no|na)?|levo|busco|trabalho\s+(no|na|em)?)\s+/i, "")
+      .replace(/^[\s,.;:-]+|[\s,.;:!?-]+$/g, "").trim();
+    if (!titulo) return { resp: "O que acontece nesse horário? Ex.: \"Toda segunda tenho academia das 7h às 8h\"." };
+    if (titulo.length > 40) return { naoEntendi: true, resp: `Não entendi bem essa rotina. Escreva só ela, por exemplo: "Toda ${DIAS[dsel[0]]} tenho tutoria das 14h às 16h".` };
+    const t = n.match(/\b(?:das|de|as|a partir das)\s*(\d{1,2})(?:[:h](\d{2}))?\s*h?(?:\s*(?:as|ate|a)\s*(\d{1,2})(?:[:h](\d{2}))?\s*h?)?/);
+    if (!t) return { resp: `Em que horário é ${titulo.toLowerCase()}? Ex.: "Toda ${DIAS[dsel[0]]} tenho ${titulo.toLowerCase()} das 14h às 16h".` };
     const pad = x => String(x).padStart(2, "0");
     const h1 = Number(t[1]), mi1 = Number(t[2] || 0); let h2 = t[3] ? Number(t[3]) : h1 + 1, mi2 = Number(t[4] || 0);
     if (h1 > 23 || h2 > 24) return { resp: "Não entendi o horário. Use algo como \"das 7h às 8h\"." };
     if (h2 * 60 + mi2 <= h1 * 60 + mi1) h2 = Math.min(23, h1 + 1);
-    let titulo = texto
-      .replace(/^\s*rotina:\s*/i, "").replace(/^\s*eu\s+/i, "")
-      .replace(/tod[ao]s?\s+(os\s+|as\s+)?dias?|todo santo dia|de segunda a sexta(-feira)?|nos dias úteis|nos dias uteis|nos fins? de semana|fins? de semana/gi, "")
-      .replace(/\b(tod[ao]s?\s+(as\s+|os\s+)?|às\s+|aos?\s+)?(segunda|terça|terca|quarta|quinta|sexta|sábado|sabado|domingo)s?(-feiras?)?(\s*(,|e)\s*)?/gi, "")
-      .replace(/(das|de|às|as|a partir das)\s*\d{1,2}([:h]\d{2})?\s*h?(\s*(às|as|até|ate|a)\s*\d{1,2}([:h]\d{2})?\s*h?)?/gi, "")
-      .replace(/^\s*(eu\s+)?(tenho|faço|faco|vou\s+(pra|para|ao|à|a|no|na)?|levo|busco|trabalho\s+(no|na|em)?)\s+/i, "")
-      .replace(/^[\s,.;:-]+|[\s,.;:!?-]+$/g, "").trim();
-    if (!titulo) return { resp: "O que acontece nesse horário? Ex.: \"Toda segunda tenho academia das 7h às 8h\"." };
     const r = { titulo: cap(titulo), dias: dsel, ini: `${pad(h1)}:${pad(mi1)}`, fim: `${pad(h2)}:${pad(mi2)}` };
     return { resp: "Confere antes de eu salvar na sua rotina?", previa: { acao: "rotina", dados: r, campos: { "O quê": r.titulo, "Dias": descDias(r.dias), "Horário": `${r.ini}–${r.fim}` } } };
   }
