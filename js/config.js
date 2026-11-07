@@ -16,5 +16,5 @@ export const GOOGLE_ESCOPOS = "https://www.googleapis.com/auth/calendar.events.r
 // Endereço do app (usado nos links dos e-mails de confirmação e de nova senha).
 export const APP_URL = location.origin + location.pathname.replace(/[^/]*$/, "");
 
-export const VERSAO = "1.0.0";
+export const VERSAO = "1.1.0";
 export const ITERACOES_PBKDF2 = 600000; // OWASP Password Storage Cheat Sheet: PBKDF2-HMAC-SHA256 ≥ 600.000

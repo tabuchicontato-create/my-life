@@ -178,8 +178,8 @@ T.agenda = () => {
   <div class="linha" style="margin-bottom:10px"><button class="btn sec peq" data-acao="semana" data-d="-1">← Semana anterior</button><button class="btn sec peq" data-acao="semana" data-d="0" ${S.ui.semana === 0 ? "disabled" : ""}>Esta semana</button><button class="btn sec peq" data-acao="semana" data-d="1">Próxima semana →</button></div>
   ${g.agendas.length ? `<div class="chips" style="margin-bottom:10px">${g.agendas.map(a => `<label class="chk-pill"><input type="checkbox" data-acao-change="agenda-visivel" data-id="${esc(a.id)}" ${ocultas.has(a.id) ? "" : "checked"}><i style="background:${esc(a.cor)}"></i>${esc(a.nome)}</label>`).join("")}</div>` : ""}
   <div class="linha" style="margin-bottom:12px"><span class="pill app">MY LIFE</span><span class="pill rotina">Rotina</span><span class="pill bad">prova</span>${conflitos ? `<span class="pill bad">${Math.ceil(conflitos / 2)} conflito(s) de horário</span>` : ""}</div>
-  <div class="grade dupla">${semana.map(d => { const ev = eventosDoDia(d); return `<section class="cartao dia ${mesmoDia(d, hoje()) ? "hoje" : ""}"><h3>${cap(DIAS[d.getDay()])} <small>${fData(d)}</small>${mesmoDia(d, hoje()) ? ` <span class="pill app">hoje</span>` : ""}</h3>
-    ${ev.length ? ev.map(e => `<div class="evento ${e.origem} ${e.prova ? "prova" : ""} ${e.conflito ? "conflito" : ""}" ${e.cor ? `style="border-left-color:${esc(e.cor)}"` : ""}><span class="h">${e.diaTodo ? "Dia todo" : fHora(e.ini) + (e.fim > e.ini ? "–" + fHora(e.fim) : "")}</span><span>${esc(e.titulo)}${e.prova ? ` <span class="pill bad">prova</span>` : ""}${e.conflito ? ` <span class="pill bad">conflito</span>` : ""}${e.local ? `<span class="local">${esc(e.local)}</span>` : ""}</span><span class="tag">${tagEvento(e)}</span></div>`).join("") : `<p class="nota">Livre</p>`}
+  <div class="grade semana">${semana.map(d => { const ev = eventosDoDia(d); return `<section class="cartao dia ${mesmoDia(d, hoje()) ? "hoje" : ""}"><h3>${cap(DIAS[d.getDay()])} <small>${fData(d)}</small>${mesmoDia(d, hoje()) ? ` <span class="pill app">hoje</span>` : ""}</h3>
+    ${ev.length ? ev.map(e => `<div class="evento ${e.origem} ${e.prova ? "prova" : ""} ${e.conflito ? "conflito" : ""}" ${e.cor ? `style="border-left-color:${esc(e.cor)}"` : ""}><span class="h">${e.diaTodo ? "Dia todo" : fHora(e.ini) + (e.fim > e.ini ? "–" + fHora(e.fim) : "")}${e.prova ? ` <span class="pill bad">prova</span>` : ""}${e.conflito ? ` <span class="pill bad">conflito</span>` : ""}</span><span class="tag">${tagEvento(e)}</span><span class="titulo">${esc(e.titulo)}${e.local ? `<span class="local">${esc(e.local)}</span>` : ""}</span></div>`).join("") : `<p class="nota">Livre</p>`}
   </section>`; }).join("")}</div>
   <p class="nota" style="margin-top:12px">O MY LIFE nunca cria, altera ou apaga nada no seu Google Agenda. Provas e substitutivas do Google entram sozinhas em Faculdade.</p>`;
 };
@@ -221,15 +221,53 @@ T.saude = () => {
   }
   if (sub === "treino"){
     const tr = lista("treino").sort((a, b) => new Date(b.data) - new Date(a.data));
+    const cargas = lista("carga").sort((a, b) => new Date(a.data) - new Date(b.data));
+    const porEx = new Map();
+    for (const c of cargas){ const k = norm(c.exercicio); if (!porEx.has(k)) porEx.set(k, { nome: c.exercicio, regs: [] }); porEx.get(k).regs.push(c); }
+    const exs = [...porEx.values()].sort((a, b) => new Date(b.regs.at(-1).data) - new Date(a.regs.at(-1).data));
+    const kg = v => (Math.round(v * 100) / 100).toLocaleString("pt-BR") + " kg";
+    const serie = c => (c.series || c.reps) ? ` · ${c.series || "?"}×${c.reps || "?"}` : "";
+    const grafico = regs => {
+      if (regs.length < 2) return "";
+      const v = regs.map(r => r.peso), mn = Math.min(...v), mx = Math.max(...v), W = 220, H = 48, P = 4;
+      const pts = v.map((y, i) => [P + i * (W - 2 * P) / (v.length - 1), mx === mn ? H / 2 : H - P - (y - mn) * (H - 2 * P) / (mx - mn)]);
+      return `<svg class="spark" viewBox="0 0 ${W} ${H}" role="img" aria-label="Evolução do peso"><polyline points="${pts.map(p => p.map(n => n.toFixed(1)).join(",")).join(" ")}"/>${pts.map(p => `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="2.5"/>`).join("")}</svg>`;
+    };
+    const progresso = exs.map(e => {
+      const ult = e.regs.at(-1), ant = e.regs.at(-2), pri = e.regs[0], max = Math.max(...e.regs.map(r => r.peso));
+      const dif = ant ? ult.peso - ant.peso : 0, total = ult.peso - pri.peso;
+      const tend = !ant ? `<span class="pill neutro">1º registro</span>` : dif > 0 ? `<span class="pill ok">▲ +${kg(dif)}</span>` : dif < 0 ? `<span class="pill bad">▼ ${kg(dif)}</span>` : `<span class="pill neutro">= igual</span>`;
+      return `<div class="ex"><div class="ex-topo"><b>${esc(e.nome)}</b>${tend}</div>
+        <div class="ex-num"><span><small>Atual</small>${kg(ult.peso)}</span><span><small>Recorde</small>${kg(max)}</span><span><small>Desde o início</small>${total >= 0 ? "+" : ""}${kg(total)}</span></div>
+        ${grafico(e.regs.slice(-12))}
+        <div class="sub">${e.regs.slice(-4).reverse().map(r => `${fData(r.data)}: ${kg(r.peso)}${serie(r)}`).join(" · ")}</div></div>`;
+    }).join("");
+    const dias = new Map();
+    for (const c of [...cargas].reverse()){ const k = iso(new Date(c.data)); if (!dias.has(k)) dias.set(k, []); dias.get(k).push(c); }
+    const historico = [...dias.entries()].slice(0, 14).map(([d, cs]) => `<div class="dia-treino"><h3>${cap(rotuloDia(deIso(d, "12:00")))} <small>${fData(deIso(d, "12:00"))}</small></h3>
+      ${cs.map(c => `<div class="item"><span><b>${esc(c.exercicio)}</b>${c.nota ? `<div class="sub">${esc(c.nota)}</div>` : ""}</span><span class="linha"><span class="mono">${kg(c.peso)}${serie(c)}</span><button class="btn x" data-acao="apagar" data-id="${c.id}" aria-label="Apagar">×</button></span></div>`).join("")}</div>`).join("");
     corpo = `<div class="grade dupla">
-    <section class="cartao"><header><h2>Registrar treino</h2></header>
+    <section class="cartao"><header><h2>Registrar exercício</h2><small>peso do dia</small></header>
+      <form data-form="carga"><div class="form-msg"></div><div class="campos">
+        <label for="c-ex">Exercício<input id="c-ex" name="exercicio" list="c-exs" placeholder="Ex.: Agachamento" required><datalist id="c-exs">${exs.map(e => `<option>${esc(e.nome)}</option>`).join("")}</datalist></label>
+        <label for="c-peso">Peso (kg)<input id="c-peso" name="peso" inputmode="decimal" placeholder="Ex.: 22,5" required></label>
+        <label for="c-ser">Séries<input id="c-ser" name="series" inputmode="numeric" placeholder="3"></label>
+        <label for="c-rep">Repetições<input id="c-rep" name="reps" inputmode="numeric" placeholder="12"></label>
+        <label for="c-d">Data<input id="c-d" type="date" name="data" value="${S.ui.dataCarga || hj}"></label>
+        <label for="c-nota">Observação<input id="c-nota" name="nota" placeholder="opcional"></label></div>
+        <button class="btn" type="submit">Salvar exercício</button>
+        <p class="nota">Dica: registre um exercício por vez. A data fica guardada para lançar o treino inteiro do dia.</p></form></section>
+    <section class="cartao"><header><h2>Progresso de carga</h2><small>${exs.length} exercício(s)</small></header>
+      ${progresso || `<p class="nota">Registre seus exercícios com o peso para ver aqui se você está subindo de carga.</p>`}</section>
+    <section class="cartao"><header><h2>Treinos por dia</h2></header>
+      ${historico || `<p class="nota">Nenhum exercício registrado.</p>`}</section>
+    <section class="cartao"><header><h2>Outras atividades</h2><small>${tr.filter(t => new Date(t.data) >= dia(-6)).length} nos últimos 7 dias</small></header>
       <form data-form="treino"><div class="form-msg"></div><div class="campos">
         <label for="t-tipo">Atividade<input id="t-tipo" name="tipo" list="t-tipos" required><datalist id="t-tipos"><option>Caminhada</option><option>Musculação</option><option>Yoga</option><option>Corrida</option><option>Pilates</option></datalist></label>
         <label for="t-min">Duração (min)<input id="t-min" name="min" inputmode="numeric" value="30" required></label>
         <label for="t-d">Data<input id="t-d" type="date" name="data" value="${hj}"></label></div>
-        <button class="btn" type="submit">Registrar</button></form></section>
-    <section class="cartao"><header><h2>Treinos</h2><small>${tr.filter(t => new Date(t.data) >= dia(-6)).length} nos últimos 7 dias</small></header>
-      <div class="lista">${tr.slice(0, 30).map(t => `<div class="item"><span><b>${esc(t.tipo)}</b><div class="sub">${rotuloDia(t.data)}, ${fData(t.data)}</div></span><span class="linha">${t.min} min<button class="btn x" data-acao="apagar" data-id="${t.id}" aria-label="Apagar">×</button></span></div>`).join("") || `<p class="nota">Nenhum treino registrado.</p>`}</div></section></div>`;
+        <button class="btn" type="submit">Registrar</button></form>
+      <div class="lista">${tr.slice(0, 30).map(t => `<div class="item"><span><b>${esc(t.tipo)}</b><div class="sub">${rotuloDia(t.data)}, ${fData(t.data)}</div></span><span class="linha">${t.min} min<button class="btn x" data-acao="apagar" data-id="${t.id}" aria-label="Apagar">×</button></span></div>`).join("") || `<p class="nota">Nenhuma atividade registrada.</p>`}</div></section></div>`;
   }
   if (sub === "alimentacao"){
     const agua = lista("agua").find(a => a.data === hj)?.copos || 0;
@@ -392,6 +430,14 @@ export const formularios = {
   consulta: async fd => { await salvar("consulta", { titulo: String(fd.get("titulo")).trim(), data: comData(fd.get("data"), fd.get("hora") || "09:00"), nota: String(fd.get("nota") || "") }); aviso("ok", "Consulta adicionada. Já aparece na Agenda."); },
   exame: async fd => { await salvar("exame", { titulo: String(fd.get("titulo")).trim(), data: comData(fd.get("data"), "08:00"), status: String(fd.get("status")) }); aviso("ok", "Exame adicionado."); },
   sintoma: async fd => { await salvar("sintoma", { data: new Date().toISOString(), sintoma: String(fd.get("sintoma")).trim(), intens: Number(fd.get("intens")), nota: String(fd.get("nota") || "") }); aviso("ok", "Sintoma registrado no diário."); },
+  carga: async (fd, form) => {
+    const exercicio = String(fd.get("exercicio") || "").trim(); if (!exercicio) return erroForm(form, "Digite o nome do exercício.");
+    const peso = valorBR(fd.get("peso")); if (!(peso >= 0) || String(fd.get("peso")).trim() === "") return erroForm(form, "Digite o peso em kg, por exemplo 22,5.");
+    const int = n => { const v = parseInt(fd.get(n), 10); return v > 0 ? v : null; };
+    const d = fd.get("data") || iso(hoje()); S.ui.dataCarga = d;
+    await salvar("carga", { data: comData(d, "12:00"), exercicio, peso, series: int("series"), reps: int("reps"), nota: String(fd.get("nota") || "").trim() });
+    aviso("ok", `${exercicio}: ${peso.toLocaleString("pt-BR")} kg registrado.`);
+  },
   treino: async (fd, form) => { const min = parseInt(fd.get("min"), 10); if (!(min > 0)) return erroForm(form, "Digite a duração em minutos."); await salvar("treino", { data: comData(fd.get("data") || iso(hoje()), "12:00"), tipo: String(fd.get("tipo")).trim(), min }); aviso("ok", "Treino registrado."); },
   refeicao: async fd => { await salvar("refeicao", { data: iso(hoje()), quando: String(fd.get("quando")), texto: String(fd.get("texto")).trim() }); aviso("ok", "Refeição registrada."); },
   chat: async (fd, form) => { const t = String(fd.get("t")); form.reset(); await enviarChat(t); },
