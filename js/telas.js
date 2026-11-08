@@ -319,10 +319,25 @@ T.assistente = () => {
   </div>`;
 };
 
+/* ---------- Tema (claro / escuro / automático), guardado só neste aparelho ---------- */
+const CHAVE_TEMA = "mylife-tema";
+export function temaAtual(){ try { return localStorage.getItem(CHAVE_TEMA) || "auto"; } catch { return "auto"; } }
+export function aplicarTema(t = temaAtual()){
+  const raiz = document.documentElement;
+  if (t === "claro") raiz.dataset.theme = "light"; else if (t === "escuro") raiz.dataset.theme = "dark"; else delete raiz.dataset.theme;
+  const cor = t === "claro" ? "#f7f2ec" : t === "escuro" ? "#1c1917" : null;
+  document.querySelectorAll('meta[name="theme-color"]').forEach(m => { m.content = cor || (/dark/.test(m.media) ? "#1c1917" : "#f7f2ec"); });
+}
+const TEMAS = [["auto", "Automático"], ["claro", "Claro"], ["escuro", "Escuro"]];
+
 T.perfil = () => {
-  const cfg = config(), n = S.itens.length;
+  const cfg = config(), n = S.itens.length, tema = temaAtual();
   return `${cab("Perfil", `<span class="mono">${esc(S.sessao.email)}</span>`)}
   <div class="grade dupla">
+    <section class="cartao"><header><h2>Aparência</h2><small>só neste aparelho</small></header>
+      <div class="abas" role="tablist" aria-label="Tema" style="margin-bottom:0">${TEMAS.map(([k, t]) => `<button class="aba" role="tab" data-acao="tema" data-t="${k}" aria-selected="${tema === k}">${t}</button>`).join("")}</div>
+      <p class="nota">${tema === "auto" ? "Segue o tema do seu computador ou celular." : tema === "claro" ? "Sempre claro: marfim e rosa antigo." : "Sempre escuro: tons de café."}</p>
+    </section>
     <section class="cartao"><header><h2>IA local (Ollama)</h2><small>só neste aparelho</small></header>
       ${(() => { const o = cfgOllama(); return `<form data-form="ollama"><div class="form-msg"></div>
         <label class="linha" for="o-at"><input id="o-at" type="checkbox" name="ativo" ${o.ativo ? "checked" : ""}> Usar o Ollama quando o assistente não entender</label>
@@ -429,6 +444,7 @@ export const acoes = {
     } catch (e){ S.ui.ollamaStatus = { ok: false, texto: e.message }; }
     render();
   },
+  tema: el => { const t = el.dataset.t; try { if (t === "auto") localStorage.removeItem(CHAVE_TEMA); else localStorage.setItem(CHAVE_TEMA, t); } catch { /* sem armazenamento: vale só nesta sessão */ } aplicarTema(t); render(); },
   apagar: async el => { await apagar(el.dataset.id); render(); },
   feita: async el => { const a = lista("aval").find(x => x.id === el.dataset.id); const { id, ...d } = a; await salvar("aval", { ...d, feita: true }, id); aviso("ok", `${a.tipo} de ${a.disc} marcada como feita.`); },
   tomar: async el => { await salvar("dose", { medId: el.dataset.id, data: iso(hoje()), hora: fHora(new Date()) }); render(); },
