@@ -14,7 +14,7 @@ export function salvarOllama(c){
   try { localStorage.setItem(CHAVE, JSON.stringify({ ...cfgOllama(), ...c })); return true; } catch { return false; }
 }
 
-const SAUDE = /(remedi|medicament|medicac|dose|dosagem|\bsop\b|ovario|sintoma|menstrua|colica|ciclo|consulta|exame|medic[oa]|gineco|endocrin|metformina|anticoncep|pilula|hormon|insulina|glicose|tratamento|saude|diagnost|doen[cç]a|\bdor\b|ansiedade|depress|terapia|psico|enjo|nausea|febre|tontura|enxaqueca|insonia|vomit|azia|diarreia|sangramento|cansac|fadiga|calafrio|\btomei\b|comi\b|almocei|jantei|lanchei|refeic|treinei|malhei|musculac|supino|agachament|\bkg\b|ultrassom|hemograma)/;
+const SAUDE = /(remedi|medicament|medicac|dose|dosagem|\bsop\b|ovario|sintoma|menstrua|colica|ciclo|consulta|exame|medic[oa]|gineco|endocrin|metformina|anticoncep|pilula|hormon|insulina|glicose|tratamento|saude|diagnost|doen[cç]a|\bdor\b|ansiedade|depress|terapia|psico|enjo|nausea|febre|tontura|enxaqueca|insonia|vomit|azia|diarreia|sangramento|cansac|fadiga|calafrio|\btomei\b|comi\b|almocei|jantei|lanchei|refeic|treinei|malhei|musculac|supino|agachament|\bkg\b|ultrassom|hemograma|treino|academia|caminhada|corrida|pilates|yoga|menstru|insonia|sono)/;
 export const ehSaude = t => SAUDE.test(norm(t));
 
 function urlBase(){ return cfgOllama().url.replace(/\/+$/, ""); }
@@ -66,6 +66,7 @@ Cada comando deve seguir EXATAMENTE um destes modelos (troque o que está entre 
 - Organize minha semana
 - O que tenho hoje?
 Regras:
+- A usuária escreve do jeito que fala: com erros de digitação, sem acento, abreviações (hj, amn, dps, tbm, vc, pq, mto, pra, tô, tá), gírias (conto, pila, torrei, caiu na conta) e frases que não são literais. Entenda a intenção, não as palavras ao pé da letra.
 - Se a mensagem tiver várias coisas (ex.: dois gastos), gere um comando para cada uma, na ordem.
 - Valores com vírgula decimal (ex.: 12,50). Horários em formato 24h.
 - Categorias válidas: ${cats.join(", ")}. Disciplinas: ${discs.join(", ")}. Termos da usuária: ${termos}.
@@ -87,6 +88,10 @@ Mensagem: passei 2 horas estudando anato e já entreguei o trabalho de metep
 JSON: {"comandos": ["Estudei 2h de Anatomia", "Fiz o trabalho de METEP"], "resposta": ""}
 Mensagem: quero gastar no máximo 300 com lazer
 JSON: {"comandos": ["Limite de Lazer 300"], "resposta": ""}
+Mensagem: hj passei a tarde inteira na biblioteca com histo, umas 3hrs, e o uber de volta saiu 18
+JSON: {"comandos": ["Estudei 3h de Histologia", "Registre despesa de R$ 18 com Uber"], "resposta": ""}
+Mensagem: semana q vem tem prova de anato na quinta as 8 da manha
+JSON: {"comandos": ["Tenho prova de Anatomia quinta às 8h"], "resposta": ""}
 Mensagem: comprei umas coisas
 JSON: {"comandos": [], "resposta": "Quanto você gastou e com o quê?"}`;
 }
