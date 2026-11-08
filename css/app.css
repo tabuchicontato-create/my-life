@@ -214,3 +214,6 @@ details summary{cursor:pointer;font-weight:500;color:var(--accent)}
 .dia-treino h3 small{color:var(--muted);font-weight:400;font-family:var(--body);font-size:.8rem}
 .cartao > .btn, .cartao > form > .btn{justify-self:start}
 .marca svg *{stroke-width:1.6}
+label.linha,label:has(> input[type="checkbox"]),label:has(> input[type="radio"]){text-transform:none;letter-spacing:normal;font-size:.9rem;font-weight:400;color:var(--ink)}
+input[type="checkbox"],input[type="radio"]{width:auto;flex:none;margin:3px 0 0;padding:0}
+label.linha{display:flex;align-items:flex-start;gap:10px;flex-wrap:nowrap}
