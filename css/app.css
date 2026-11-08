@@ -217,3 +217,27 @@ details summary{cursor:pointer;font-weight:500;color:var(--accent)}
 label.linha,label:has(> input[type="checkbox"]),label:has(> input[type="radio"]){text-transform:none;letter-spacing:normal;font-size:.9rem;font-weight:400;color:var(--ink)}
 input[type="checkbox"],input[type="radio"]{width:auto;flex:none;margin:3px 0 0;padding:0}
 label.linha{display:flex;align-items:flex-start;gap:10px;flex-wrap:nowrap}
+
+/* ---- Painel (Início) ---- */
+.conte{margin-bottom:20px;gap:12px}
+.conte .entrada input{background:var(--surface-2);border-color:transparent}
+.conte .entrada input:focus-visible{background:var(--surface)}
+.painel-chat{min-height:0;max-height:none;overflow:visible;padding:4px 0}
+.grade.painel{grid-template-columns:repeat(auto-fit,minmax(310px,1fr))}
+.cartao h3{font-size:1.05rem;margin-top:4px;color:var(--muted)}
+.timeline{display:grid;gap:2px;position:relative}
+.tl{display:grid;grid-template-columns:52px minmax(0,1fr) auto;align-items:center;gap:10px;padding:9px 4px 9px 0;border-bottom:1px solid color-mix(in srgb,var(--line) 70%,transparent);font-size:.92rem}
+.tl:last-child{border-bottom:none}
+.tl-h{font-family:var(--mono);font-size:.78rem;color:var(--muted);position:relative;padding-left:14px}
+.tl-h::before{content:"";position:absolute;left:0;top:50%;width:7px;height:7px;border-radius:50%;transform:translateY(-50%);background:var(--accent-2)}
+.tl.rotina .tl-h::before{background:var(--rotina)}
+.tl.google .tl-h::before{background:var(--google)}
+.tl.prova .tl-h::before{background:var(--bad)}
+.tl-t{min-width:0;overflow-wrap:anywhere;font-weight:500}
+.tl-t small{display:block;color:var(--muted);font-weight:400;font-size:.78rem}
+.tl.passou{opacity:.5}
+.tl.passou .tl-t{text-decoration:line-through;text-decoration-color:color-mix(in srgb,var(--muted) 60%,transparent)}
+.sugestao{font-family:var(--display);font-style:italic;font-size:1.1rem;line-height:1.4;color:var(--accent);padding:10px 14px;border-left:2px solid var(--accent-2);background:color-mix(in srgb,var(--accent-soft) 50%,transparent);border-radius:0 var(--raio-p) var(--raio-p) 0}
+.agua-linha{justify-content:space-between}
+.agua-linha .copo{width:20px;height:26px;border-radius:0 0 7px 7px}
+@media (max-width:860px){ .tl{grid-template-columns:48px minmax(0,1fr) auto} .grade.painel{grid-template-columns:1fr} }
