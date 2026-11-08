@@ -55,6 +55,7 @@ Cada comando deve seguir EXATAMENTE um destes modelos (troque o que está entre 
 - Fiz a <prova|trabalho|seminário|substitutiva> de <disciplina>
 - Estudei <horas>h de <disciplina>
 - Adicionar disciplina <nome>
+- Compromisso <o que é> <hoje|amanhã|segunda|terça|quarta|quinta|sexta|sábado|domingo|dia DD/MM> às <HH>h
 - Quais provas estão chegando?
 - Quanto gastei este mês?
 - Qual meu saldo?
