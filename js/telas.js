@@ -40,6 +40,7 @@ export function eventosDoDia(d){
   for (const a of lista("aval")) if (!a.feita && mesmoDia(a.data, ini)){ const i = new Date(a.data); ev.push({ titulo: `${a.tipo} de ${a.disc}`, ini: i, fim: new Date(i.getTime() + (a.tipo === "Trabalho" ? 0 : 7200000)), origem: "app", tipo: "Faculdade", prova: a.tipo !== "Trabalho" }); }
   for (const c of lista("consulta")) if (mesmoDia(c.data, ini)){ const i = new Date(c.data); ev.push({ titulo: c.titulo, ini: i, fim: new Date(i.getTime() + 3600000), origem: "app", tipo: "Saúde" }); }
   for (const x of lista("exame")) if (x.status === "Agendado" && mesmoDia(x.data, ini)){ const i = new Date(x.data); ev.push({ titulo: x.titulo, ini: i, fim: new Date(i.getTime() + 3600000), origem: "app", tipo: "Saúde" }); }
+  for (const c of lista("compromisso")) if (mesmoDia(c.data, ini)){ const i = new Date(c.data); ev.push({ titulo: c.titulo, ini: i, fim: c.fim ? new Date(c.fim) : new Date(i.getTime() + 3600000), origem: "app", tipo: "Compromisso" }); }
   for (const r of lista("rotina")) if (r.dias.includes(ini.getDay())){ const a = deIso(iso(ini), r.ini), b = deIso(iso(ini), r.fim); ev.push({ titulo: r.titulo, ini: a, fim: b, origem: "rotina" }); }
   ev.sort((a, b) => (b.diaTodo ? 1 : 0) - (a.diaTodo ? 1 : 0) || a.ini - b.ini);
   ev.forEach((e, i) => { e.conflito = !e.diaTodo && e.fim > e.ini && ev.some((o, j) => j !== i && !o.diaTodo && o.fim > o.ini && o.ini < e.fim && e.ini < o.fim); });
@@ -298,6 +299,7 @@ function htmlPrevia(p, i){
 T.assistente = () => {
   if (!S.ui.chat.length) S.ui.chat.push({ de: "ela", texto: "Oi! Eu entendo comandos simples. Toque numa sugestão ou escreva do seu jeito." });
   const rot = lista("rotina"), ter = lista("termo");
+  const comp = lista("compromisso").filter(c => new Date(c.fim || c.data) >= hoje()).sort((a, b) => new Date(a.data) - new Date(b.data));
   return `${cab("Assistente", "Entende comandos previstos e mostra uma prévia antes de salvar")}
   <section class="cartao">
     <div class="chat" id="chat" aria-live="polite">${S.ui.chat.map((m, i) => `<div class="bolha ${m.de}">${esc(m.texto)}${m.previa ? htmlPrevia(m.previa, i) : ""}</div>`).join("")}</div>
@@ -305,6 +307,9 @@ T.assistente = () => {
     <form data-form="chat" class="entrada"><label for="c-in" class="so-leitor">Mensagem</label><input id="c-in" name="t" placeholder="Escreva um comando…" autocomplete="off"><button class="btn" type="submit">Enviar</button></form>
   </section>
   <div class="grade dupla" style="margin-top:14px">
+    <section class="cartao"><header><h2>Próximos compromissos</h2><small>aparecem na Agenda</small></header>
+      ${comp.length ? `<div class="lista">${comp.map(c => `<div class="item"><span><b>${esc(c.titulo)}</b><div class="sub">${rotuloDia(c.data)}, ${fData(c.data)} · ${fHora(c.data)}${c.fim ? "–" + fHora(c.fim) : ""}</div></span><button class="btn x" data-acao="apagar" data-id="${c.id}" aria-label="Remover">×</button></div>`).join("")}</div>` : `<p class="nota">Nenhum. Ex.: "Amanhã vou à academia às 14h".</p>`}
+    </section>
     <section class="cartao"><header><h2>Minha rotina</h2><small>aparece na Agenda</small></header>
       ${rot.length ? `<div class="lista">${rot.map(r => `<div class="item"><span><b>${esc(r.titulo)}</b><div class="sub">${descDias(r.dias)} · ${r.ini}–${r.fim}</div></span><button class="btn x" data-acao="apagar" data-id="${r.id}" aria-label="Remover">×</button></div>`).join("")}</div>` : `<p class="nota">Vazia. Ex.: "Toda terça e quinta tenho estágio das 14h às 17h".</p>`}
     </section>
@@ -443,14 +448,14 @@ export const acoes = {
       if (p.acao === "sintoma") await salvar("sintoma", p.dados);
       if (p.acao === "treino") await salvar("treino", p.dados);
       if (p.acao === "agua"){ const hj = iso(hoje()); const a = lista("agua").find(x => x.data === hj); p.dados.total = (a?.copos || 0) + p.dados.copos; await salvar("agua", { data: hj, copos: p.dados.total }, a?.id); }
-      for (const c of ["estudo", "med", "dose", "consulta", "exame", "carga", "refeicao"]) if (p.acao === c) await salvar(c, p.dados);
+      for (const c of ["estudo", "med", "dose", "consulta", "exame", "carga", "refeicao", "compromisso"]) if (p.acao === c) await salvar(c, p.dados);
       if (p.acao === "dose-nova"){ const medId = await salvar("med", { nome: p.dados.nome, hora: "", orient: "Uso eventual (como você disse)" }); await salvar("dose", { medId, data: iso(hoje()), hora: p.dados.hora }); }
       if (p.acao === "orcamento") await salvarConfig({ orcamento: { ...config().orcamento, [p.dados.cat]: p.dados.valor } });
       if (p.acao === "disciplina" && !config().disciplinas.includes(p.dados.nome)) await salvarConfig({ disciplinas: [...config().disciplinas, p.dados.nome] });
       if (p.acao === "aval-feita"){ const a = lista("aval").find(x => x.id === p.dados.id); if (a){ const { id, ...d } = a; await salvar("aval", { ...d, feita: true }, id); } }
       if (p.acao === "exame-status"){ const x = lista("exame").find(e => e.id === p.dados.id); if (x){ const { id, ...d } = x; await salvar("exame", { ...d, status: p.dados.status }, id); } }
       p.estado = "salvo";
-      S.ui.chat.push({ de: "ela", texto: { fin: "Pronto, lançamento salvo em Finanças.", aval: "Pronto, salvo em Faculdade e já aparece na Agenda.", rotina: "Pronto, entrou na sua rotina e já aparece na Agenda.", termo: `Pronto. Quando você registrar um gasto com "${p.dados.termo}", vou usar a categoria ${p.dados.cat}.`, "tirar-rotina": "Removido da sua rotina.", sintoma: "Pronto, anotado no seu diário de sintomas (Saúde → Tratamento). Leve o diário à consulta.", treino: "Pronto, treino registrado em Saúde → Treino.", agua: `Pronto. Hoje você já tomou ${p.dados.total} copo(s) de água.`, estudo: "Pronto, horas de estudo registradas em Faculdade.", orcamento: `Pronto, limite de ${p.dados.cat} atualizado em Finanças.`, disciplina: `Pronto, ${p.dados.nome} entrou na sua lista de disciplinas.`, "aval-feita": "Pronto, marcada como feita em Faculdade.", med: "Pronto, remédio cadastrado em Saúde → Tratamento (só registro).", dose: "Pronto, dose marcada como tomada hoje.", "dose-nova": `Pronto, ${p.dados.nome} cadastrado em Saúde → Tratamento e marcado como tomado hoje.`, consulta: "Pronto, consulta salva em Saúde e já aparece na Agenda.", exame: "Pronto, exame salvo em Saúde → Tratamento.", "exame-status": "Pronto, situação do exame atualizada.", carga: "Pronto, carga registrada em Saúde → Treino.", refeicao: "Pronto, refeição registrada em Saúde → Alimentação e água." }[p.acao] });
+      S.ui.chat.push({ de: "ela", texto: { fin: "Pronto, lançamento salvo em Finanças.", aval: "Pronto, salvo em Faculdade e já aparece na Agenda.", rotina: "Pronto, entrou na sua rotina e já aparece na Agenda.", termo: `Pronto. Quando você registrar um gasto com "${p.dados.termo}", vou usar a categoria ${p.dados.cat}.`, "tirar-rotina": "Removido da sua rotina.", sintoma: "Pronto, anotado no seu diário de sintomas (Saúde → Tratamento). Leve o diário à consulta.", treino: "Pronto, treino registrado em Saúde → Treino.", agua: `Pronto. Hoje você já tomou ${p.dados.total} copo(s) de água.`, estudo: "Pronto, horas de estudo registradas em Faculdade.", orcamento: `Pronto, limite de ${p.dados.cat} atualizado em Finanças.`, disciplina: `Pronto, ${p.dados.nome} entrou na sua lista de disciplinas.`, "aval-feita": "Pronto, marcada como feita em Faculdade.", med: "Pronto, remédio cadastrado em Saúde → Tratamento (só registro).", dose: "Pronto, dose marcada como tomada hoje.", "dose-nova": `Pronto, ${p.dados.nome} cadastrado em Saúde → Tratamento e marcado como tomado hoje.`, consulta: "Pronto, consulta salva em Saúde e já aparece na Agenda.", exame: "Pronto, exame salvo em Saúde → Tratamento.", "exame-status": "Pronto, situação do exame atualizada.", carga: "Pronto, carga registrada em Saúde → Treino.", refeicao: "Pronto, refeição registrada em Saúde → Alimentação e água.", compromisso: "Pronto, compromisso salvo. Já aparece na Agenda e em Próximos compromissos." }[p.acao] });
     } catch (e){ p.estado = "pendente"; S.ui.chat.push({ de: "ela", texto: "Não consegui salvar: " + e.message }); }
     render(); const c = $("#chat"); if (c) c.scrollTop = c.scrollHeight;
   },
