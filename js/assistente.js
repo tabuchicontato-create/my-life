@@ -42,6 +42,8 @@ function lerAgua(n){
 const ATIVIDADES = [[/musculacao|academia|malhei/, "Musculação"], [/\bi?oga\b|yoga/, "Yoga"], [/pilates/, "Pilates"], [/corri\b|corrida/, "Corrida"], [/caminhei|caminhada/, "Caminhada"], [/nadei|natacao/, "Natação"], [/pedalei|bike|bicicleta|ciclismo|spinning/, "Bicicleta"], [/danc/, "Dança"], [/funcional/, "Funcional"], [/crossfit/, "Crossfit"], [/alongamento|alonguei/, "Alongamento"]];
 function duracaoMin(n){
   let m;
+  // "às 20h", "das 14 às 16" são horários, não duração
+  n = n.replace(/\b(?:as|a|das|pras|para as|ate)\s+\d{1,2}(?:[:h]\d{2})?\s*h?\b/g, " ");
   if (/uma hora e meia/.test(n)) return 90;
   if ((m = n.match(/(\d+)\s*h(?:oras?)?\s*e\s*meia\b/))) return Number(m[1]) * 60 + 30;
   if ((m = n.match(/(\d+)\s*h(?:oras?)?\s*(?:e\s*)?(\d{1,2})\s*(?:min(?:utos?)?)?\b/))) return Number(m[1]) * 60 + Number(m[2]);
@@ -259,6 +261,39 @@ function lerCarga(n, base){
   const quando = /\bontem\b/.test(n) ? dia(-1, 12) : dia(0, 12);
   return { resp: "Confere antes de eu salvar?", previa: { acao: "carga", dados: { data: quando.toISOString(), exercicio, peso, series, reps, nota: "" }, campos: { "Exercício": exercicio, "Carga": `${peso.toLocaleString("pt-BR")} kg`, "Séries × reps": `${series || "—"} × ${reps || "—"}`, "Data": quandoTxt(quando) } } };
 }
+/* ---------- Compromisso de um dia só ("amanhã vou à academia às 14h") ---------- */
+function lerCompromisso(n, base){
+  if (/^(?:eu\s+)?(?:tod[ao]s?\b|de segunda a sexta|nos dias uteis)/.test(n)) return null; // é rotina
+  if (!/\b(vou|tenho|terei|marquei|combinei|agendei|vai ter|tem|compromisso|preciso ir|tenho que ir)\b/.test(n) && !lerHora(n)) return null;
+  let d = lerData(n, true);
+  if (!d || d < hoje()) return null;
+  if (/semana que vem|proxima semana/.test(n) && /\b(segunda|terca|quarta|quinta|sexta|sabado|domingo)\b/.test(n) && diasAte(d) <= (7 - hoje().getDay()) % 7) d = new Date(d.getTime() + 7 * 864e5);
+  let t = " " + n + " ";
+  t = t.replace(/\b(depois de amanha|hoje|amanha)\b/g, " ")
+    .replace(/\b(?:na |nesta |no |neste |essa |esse |nessa |nesse |proxima |proximo )?(segunda|terca|quarta|quinta|sexta|sabado|domingo)(?:[- ]feira)?\b/g, " ")
+    .replace(/\b(?:na |nesta |essa )?(semana que vem|proxima semana)\b/g, " ")
+    .replace(/\bdia \d{1,2}(?:\/\d{1,2})?\b|\b\d{1,2}\/\d{1,2}\b/g, " ")
+    .replace(/\b(?:das|as|a|de|pras|para as|lá pelas|la pelas|umas)\s+\d{1,2}(?:[:h]\d{2})?\s*h?\b(?:\s+(?:as|ate|a)\s+\d{1,2}(?:[:h]\d{2})?\s*h?\b)?/g, " ")
+    .replace(/\b\d{1,2}(?:[:h]\d{2})?\s*h\b/g, " ")
+    .replace(/\b(da manha|da tarde|da noite|de manha|a tarde|a noite|cedo)\b/g, " ")
+    .replace(/\b(compromisso|marquei|combinei|agendei)\b(\s+(de|com|um|uma))?/g, " ")
+    .replace(/\s+/g, " ").trim()
+    .replace(/^(eu\s+)?(vou ter|vou|tenho que ir|preciso ir|tenho|terei|vai ter|tem)\s+/, "")
+    .replace(/^(a|ao|aos|as|na|no|nas|nos|pra|para|para a|para o|pro|em|uma|um)\s+/, "")
+    .replace(/[\s,.;:!?-]+$/, "").trim();
+  if (!t || t.length > 50 || /^\d/.test(t)) return null;
+  const nb = norm(base), k = nb.indexOf(t);
+  const titulo = cap(k >= 0 ? base.slice(k, k + t.length) : t);
+  const f = n.match(/\b(?:das|de)\s+(\d{1,2})(?:[:h](\d{2}))?\s*h?\s+(?:as|ate|a)\s+(\d{1,2})(?:[:h](\d{2}))?/);
+  const h = f ? `${pad2(f[1])}:${pad2(f[2] || 0)}` : lerHora(n);
+  if (!h) return { resp: `A que horas? (${titulo}, ${rotuloDia(d).toLowerCase()} ${fData(d)}) Ex.: "${cap(rotuloDia(d).toLowerCase())} ${titulo.toLowerCase()} às 14h".` };
+  const ini = comHora(d, h);
+  if (/\b(da tarde|da noite|a tarde|a noite)\b/.test(n) && ini.getHours() < 12) ini.setHours(ini.getHours() + 12);
+  let fim = new Date(ini.getTime() + 3600000);
+  if (f){ fim = comHora(d, `${pad2(f[3])}:${pad2(f[4] || 0)}`); if (fim <= ini) fim.setHours(fim.getHours() + 12); }
+  return { resp: "Confere antes de eu salvar? Vai aparecer na Agenda do MY LIFE (seu Google Agenda não é alterado).", previa: { acao: "compromisso", dados: { titulo, data: ini.toISOString(), fim: fim.toISOString() }, campos: { "Compromisso": titulo, "Quando": `${rotuloDia(ini)}, ${fData(ini)}`, "Horário": `${fHora(ini)}–${fHora(fim)}` } } };
+}
+
 function lerRefeicao(n, base){
   const m = n.match(/\b(almocei|jantei|lanchei|tomei cafe(?: da manha)?|no cafe da manha|cafe da manha|no cafe|no almoco|no jantar|no lanche|na janta|de manha comi|a noite comi|comi|no jantar|no lanche|de lanche|na ceia|de almoco|de janta|de jantar)\b/);
   if (!m) return null;
@@ -438,7 +473,7 @@ export function interpretar(texto, ctx){
 
   const base = texto.normalize("NFC").replace(/\s+/g, " ").trim();
   const outro = lerNota(n) || lerFeita(n) || lerDisciplina(n, base) || lerEstudo(n, base) || lerOrcamento(n)
-    || lerAgua(n) || lerCarga(n, base) || lerTreino(n, base) || lerMed(n, base) || lerDose(n) || lerConsulta(n, base) || lerExame(n, base) || lerSintoma(n, base) || lerRefeicao(n, base);
+    || lerAgua(n) || lerCarga(n, base) || lerTreino(n, base) || lerMed(n, base) || lerDose(n) || lerConsulta(n, base) || lerExame(n, base) || lerSintoma(n, base) || lerRefeicao(n, base) || lerCompromisso(n, base);
   if (outro) return outro;
 
   if (/(quais|proximas|que) (provas|trabalhos|avaliacoes)|provas (estao )?chegando|minhas provas/.test(n)){
@@ -517,5 +552,5 @@ export function interpretar(texto, ctx){
     const ev = ctx.eventosDoDia(hoje());
     return { resp: ev.length ? "Hoje:\n" + ev.map(e => `• ${e.diaTodo ? "dia todo" : fHora(e.ini)} ${e.titulo}`).join("\n") : "Nada marcado para hoje." };
   }
-  return { naoEntendi: true, resp: "Não entendi. Eu entendo comandos como:\n• Registre despesa de R$ 35 com ração\n• Gastei 80 em roupa\n• Recebi 200 de freela\n• Tenho prova de Anatomia quinta às 14h\n• Quais provas estão chegando?\n• Quanto gastei este mês? / Qual meu saldo?\n• Organize minha semana / O que tenho hoje?\n• Toda segunda e quarta tenho academia das 7h às 8h\n• Quando eu disser mercadinho, é Alimentação\n• Mostre minha rotina / Remover academia\n• Estudei 2h de Histologia / Fiz a prova de Anatomia\n• Limite de Lazer 300 / Adicionar disciplina Bioquímica\n• Estou com dor de cabeça forte / Bebi 2 copos de água\n• Fiz 30 min de caminhada / Supino 20 kg 3x10\n• Almocei arroz, feijão e frango\n• Comecei a tomar Metformina às 8h / Tomei a Metformina\n• Consulta com ginecologista dia 20/11 às 15h\n• Exame de sangue dia 15/11 / Saiu o resultado do exame de sangue" };
+  return { naoEntendi: true, resp: "Não entendi. Eu entendo comandos como:\n• Registre despesa de R$ 35 com ração\n• Gastei 80 em roupa\n• Recebi 200 de freela\n• Tenho prova de Anatomia quinta às 14h\n• Quais provas estão chegando?\n• Quanto gastei este mês? / Qual meu saldo?\n• Organize minha semana / O que tenho hoje?\n• Toda segunda e quarta tenho academia das 7h às 8h\n• Quando eu disser mercadinho, é Alimentação\n• Mostre minha rotina / Remover academia\n• Estudei 2h de Histologia / Fiz a prova de Anatomia\n• Limite de Lazer 300 / Adicionar disciplina Bioquímica\n• Estou com dor de cabeça forte / Bebi 2 copos de água\n• Fiz 30 min de caminhada / Supino 20 kg 3x10\n• Almocei arroz, feijão e frango\n• Comecei a tomar Metformina às 8h / Tomei a Metformina\n• Consulta com ginecologista dia 20/11 às 15h\n• Exame de sangue dia 15/11 / Saiu o resultado do exame de sangue\n• Amanhã vou à academia às 14h" };
 }
