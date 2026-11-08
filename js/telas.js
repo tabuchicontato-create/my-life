@@ -69,26 +69,68 @@ T.inicio = () => {
   const medsPend = meds.filter(x => !doses.some(d => d.medId === x.id));
   const agua = lista("agua").find(a => a.data === iso(hoje()))?.copos || 0;
   const treino = lista("treino").sort((a, b) => new Date(b.data) - new Date(a.data))[0];
-  const h = new Date().getHours();
-  return `${cab((h < 12 ? "Bom dia" : h < 18 ? "Boa tarde" : "Boa noite"), cap(DIAS[hoje().getDay()]) + ", " + hoje().toLocaleDateString("pt-BR", { day: "numeric", month: "long" }), `<button class="btn" data-acao="aba" data-aba="assistente">Falar com o assistente</button>`)}
+  const h = new Date().getHours(), agora = new Date();
+  // Hoje e amanhã
+  const evAmanha = eventosDoDia(dia(1));
+  // Próximos 7 dias: só o que é marcado (a rotina se repete e poluiria)
+  const semana = [];
+  for (let i = 1; i <= 7; i++){ const d = dia(i); for (const e of eventosDoDia(d)) if (e.origem !== "rotina") semana.push({ ...e, d }); }
+  // Finanças: categorias mais perto do limite
+  const g = gastoPorCat(), orc = cfg.orcamento;
+  const cats = Object.entries(orc).map(([c, lim]) => ({ c, lim, v: g[c] || 0, p: lim ? (g[c] || 0) / lim * 100 : 0 })).filter(x => x.v > 0).sort((a, b) => b.p - a.p).slice(0, 4);
+  // Faculdade
+  const estudos = lista("estudo").filter(e => new Date(e.data) >= dia(-6) && new Date(e.data) <= dia(1));
+  const porDisc = {}; for (const e of estudos) porDisc[e.disc] = (porDisc[e.disc] || 0) + Number(e.horas);
+  const topDisc = Object.entries(porDisc).sort((a, b) => b[1] - a[1]).slice(0, 3), maxH = Math.max(1, ...topDisc.map(x => x[1]));
+  const prova = prox[0];
+  let sugestao = "";
+  if (prova){
+    const livreNoite = !evHoje.some(e => !e.diaTodo && e.ini.getHours() < 21 && e.fim.getHours() >= 19);
+    const jaEstudou = (porDisc[prova.disc] || 0) > 0;
+    sugestao = diasAte(prova.data) <= 1 ? `${prova.tipo} de ${prova.disc} ${rotuloDia(prova.data).toLowerCase()}. Uma revisão leve e boa noite de sono.` :
+      livreNoite && h < 19 ? `Sua noite está livre: que tal 1h de ${prova.disc} às 19h?${jaEstudou ? "" : " Você ainda não estudou essa matéria nesta semana."}` :
+      `Faltam ${diasAte(prova.data)} dias para ${prova.tipo.toLowerCase()} de ${prova.disc}.${jaEstudou ? "" : " Ainda sem estudo dessa matéria nesta semana."}`;
+  }
+  // Saúde
+  const refeicoes = lista("refeicao").filter(r => r.data === iso(hoje()));
+  const sintomas = lista("sintoma").filter(s => new Date(s.data) >= dia(-2)).sort((a, b) => new Date(b.data) - new Date(a.data)).slice(0, 3);
+  const treinoHoje = lista("treino").filter(t => mesmoDia(t.data, hoje()));
+  // Conversa feita pelo painel
+  const desde = S.ui.painelDesde, conversa = desde == null ? [] : S.ui.chat.slice(desde).map((m, k) => [m, desde + k]);
+  const linhaEv = e => `<div class="tl ${e.origem} ${e.prova ? "prova" : ""}"><span class="tl-h">${horaEv(e)}</span><span class="tl-t">${esc(e.titulo)}${e.local ? `<small>${esc(e.local)}</small>` : ""}</span>${tagEvento(e)}</div>`;
+  return `${cab((h < 12 ? "Bom dia" : h < 18 ? "Boa tarde" : "Boa noite"), cap(DIAS[hoje().getDay()]) + ", " + hoje().toLocaleDateString("pt-BR", { day: "numeric", month: "long" }))}
   ${backupAtrasado ? `<div class="msg aviso" style="margin-bottom:14px">${cfg.ultimoBackup ? "Faz mais de 30 dias desde o último backup." : "Você ainda não fez nenhum backup."} <button class="btn link" data-acao="aba" data-aba="perfil">Exportar agora</button></div>` : ""}
   ${S.bloqueados.length ? `<div class="msg aviso" style="margin-bottom:14px">Você tem ${S.bloqueados.length} registro(s) bloqueado(s) de antes da troca de senha. <button class="btn link" data-acao="aba" data-aba="perfil">Desbloquear com a chave antiga</button></div>` : ""}
-  <div class="grade">
-    <section class="cartao"><header><h2>Saldo do mês</h2><small>${hoje().toLocaleDateString("pt-BR", { month: "long" })}</small></header>
-      <div class="numero ${saldo >= 0 ? "pos" : "neg"}">${brl(saldo)}</div>
-      <div class="mini"><div><small>Entrou</small><b>${brl(rec)}</b></div><div><small>Saiu</small><b>${brl(desp)}</b></div><div><small>Lançamentos</small><b>${m.length}</b></div></div>
-      <button class="btn sec peq" data-acao="aba" data-aba="financas">Ver finanças</button></section>
-    <section class="cartao"><header><h2>Hoje na agenda</h2><small>${evHoje.length} compromisso(s)</small></header>
+  <section class="cartao conte">
+    <header><h2>Me conta</h2><small>eu organizo o resto</small></header>
+    <form data-form="painel" class="entrada"><label for="p-in" class="so-leitor">O que aconteceu ou o que vem por aí</label><input id="p-in" name="t" placeholder="Ex.: tomei a metformina, gastei 30 no mercado e amanhã tenho academia às 14h" autocomplete="off"><button class="btn" type="submit">Enviar</button></form>
+    ${conversa.length ? `<div class="chat painel-chat" id="chat" aria-live="polite">${conversa.map(([m, i]) => `<div class="bolha ${m.de}">${esc(m.texto)}${m.previa ? htmlPrevia(m.previa, i) : ""}</div>`).join("")}</div><div class="linha"><button class="btn link" data-acao="painel-limpar">Limpar conversa</button><button class="btn link" data-acao="aba" data-aba="assistente">Abrir o assistente completo</button></div>`
+      : `<div class="chips">${["Bebi 2 copos de água", "Gastei 30 no mercado", "Estudei 1h de Anatomia", "Amanhã vou à academia às 14h", "Estou com cólica"].map(s => `<button class="chip" data-acao="painel-sugestao" data-t="${esc(s)}">${esc(s)}</button>`).join("")}</div>`}
+  </section>
+  <div class="grade painel">
+    <section class="cartao"><header><h2>Hoje</h2><small>${evHoje.length} na agenda</small></header>
       ${!S.google.ultimaSync ? `<p class="nota">Google Agenda ainda não sincronizado nesta sessão.</p>` : ""}
-      <div class="lista">${evHoje.length ? evHoje.map(e => `<div class="item"><span><b>${horaEv(e)}</b> ${esc(e.titulo)}</span>${tagEvento(e)}</div>`).join("") : `<p class="nota">Nada marcado para hoje.</p>`}</div>
+      <div class="timeline">${evHoje.length ? evHoje.map(e => linhaEv(e).replace('class="tl ', `class="tl ${!e.diaTodo && e.fim < agora ? "passou " : ""}`)).join("") : `<p class="nota">Nada marcado para hoje.</p>`}</div>
+      ${evAmanha.length ? `<h3>Amanhã</h3><div class="timeline">${evAmanha.slice(0, 4).map(linhaEv).join("")}${evAmanha.length > 4 ? `<p class="nota">+${evAmanha.length - 4} outro(s)</p>` : ""}</div>` : ""}
       <button class="btn sec peq" data-acao="aba" data-aba="agenda">Ver semana</button></section>
-    <section class="cartao"><header><h2>Próximas avaliações</h2></header>
-      <div class="lista">${prox.length ? prox.map(a => `<div class="item"><span>${esc(a.tipo)} · <b>${esc(a.disc)}</b><div class="sub">${rotuloDia(a.data)}, ${fData(a.data)} às ${fHora(a.data)}</div></span><span class="pill ${diasAte(a.data) <= 3 ? "warn" : "neutro"}">em ${diasAte(a.data)} dia(s)</span></div>`).join("") : `<p class="nota">Nenhuma prova pendente.${S.google.ultimaSync ? "" : " Sincronize o Google Agenda para trazer as provas de lá."}</p>`}</div>
-      <div class="nota">${hs.toLocaleString("pt-BR")} h de estudo nos últimos 7 dias</div></section>
-    <section class="cartao"><header><h2>Saúde hoje</h2><small>cifrado</small></header>
-      <div class="item"><span>Medicamentos</span><span class="pill ${medsPend.length ? "warn" : "ok"}">${meds.length ? (medsPend.length ? medsPend.length + " a marcar" : "todos marcados") : "nenhum cadastrado"}</span></div>
-      <div class="item"><span>Água</span><b>${agua} copo(s) · ${(agua * 0.25).toLocaleString("pt-BR")} L</b></div>
-      <div class="item"><span>Último treino</span><span class="sub">${treino ? `${esc(treino.tipo)} · ${treino.min} min · ${rotuloDia(treino.data)}` : "nenhum"}</span></div>
+    <section class="cartao"><header><h2>Próximos 7 dias</h2><small>${semana.length} marcado(s)</small></header>
+      <div class="lista">${semana.length ? semana.slice(0, 6).map(e => `<div class="item"><span><b>${esc(e.titulo)}</b><div class="sub">${rotuloDia(e.d)}, ${fData(e.d)} · ${horaEv(e)}</div></span>${tagEvento(e)}</div>`).join("") + (semana.length > 6 ? `<p class="nota">+${semana.length - 6} outro(s) na Agenda</p>` : "") : `<p class="nota">Nada marcado. Rotina fica em Hoje e na Agenda.</p>`}</div></section>
+    <section class="cartao"><header><h2>Finanças</h2><small>${hoje().toLocaleDateString("pt-BR", { month: "long" })}</small></header>
+      <div class="numero ${saldo >= 0 ? "pos" : "neg"}">${brl(saldo)}</div>
+      <div class="mini"><div><small>Entrou</small><b>${brl(rec)}</b></div><div><small>Saiu</small><b>${brl(desp)}</b></div></div>
+      ${cats.map(x => `<div class="orc"><div class="lin"><span>${esc(x.c)}</span><span>${brl(x.v)} de ${brl(x.lim)}</span></div><div class="barra"><i class="${x.v > x.lim ? "estouro" : x.p >= 80 ? "perto" : ""}" style="width:${Math.min(100, x.p)}%"></i></div></div>`).join("") || `<p class="nota">Nenhum gasto neste mês.</p>`}
+      <button class="btn sec peq" data-acao="aba" data-aba="financas">Ver finanças</button></section>
+    <section class="cartao"><header><h2>Faculdade</h2><small>${Object.values(porDisc).reduce((s, v) => s + v, 0).toLocaleString("pt-BR")} h de estudo em 7 dias</small></header>
+      <div class="lista">${prox.length ? prox.slice(0, 3).map(a => `<div class="item"><span>${esc(a.tipo)} · <b>${esc(a.disc)}</b><div class="sub">${rotuloDia(a.data)}, ${fData(a.data)} às ${fHora(a.data)}</div></span><span class="pill ${diasAte(a.data) <= 3 ? "warn" : "neutro"}">em ${diasAte(a.data)} dia(s)</span></div>`).join("") : `<p class="nota">Nenhuma prova pendente.</p>`}</div>
+      ${topDisc.map(([d, v]) => `<div class="orc"><div class="lin"><span>${esc(d)}</span><span>${v.toLocaleString("pt-BR")} h</span></div><div class="barra"><i style="width:${v / maxH * 100}%"></i></div></div>`).join("")}
+      ${sugestao ? `<p class="sugestao">${esc(sugestao)}</p>` : ""}
+      <button class="btn sec peq" data-acao="aba" data-aba="faculdade">Ver faculdade</button></section>
+    <section class="cartao"><header><h2>Saúde hoje</h2><small>só no seu aparelho</small></header>
+      <div class="lista">${meds.map(x => { const ok = doses.some(d => d.medId === x.id); return `<div class="item"><span><b>${esc(x.nome)}</b>${x.hora ? `<div class="sub">${esc(x.hora)}</div>` : ""}</span>${ok ? `<span class="pill ok">tomado</span>` : `<button class="btn sec peq" data-acao="tomar" data-id="${x.id}">Tomei</button>`}</div>`; }).join("") || `<p class="nota">Nenhum remédio cadastrado.</p>`}</div>
+      <div class="linha agua-linha"><div class="agua" role="img" aria-label="${agua} copos">${Array.from({ length: Math.max(8, agua) }, (_, i) => `<span class="copo ${i < agua ? "cheio" : ""}"></span>`).join("")}</div><button class="btn sec peq" data-acao="agua" data-d="1">+ 1 copo</button></div>
+      <div class="item"><span>Treino</span><span class="sub">${treinoHoje.length ? treinoHoje.map(t => `${esc(t.tipo)} · ${t.min} min`).join(", ") : treino ? `último: ${esc(treino.tipo)} · ${rotuloDia(treino.data).toLowerCase()}` : "nenhum ainda"}</span></div>
+      ${refeicoes.length ? `<div class="lista">${refeicoes.map(r => `<div class="item"><span><b>${esc(r.quando)}</b><div class="sub">${esc(r.texto)}</div></span></div>`).join("")}</div>` : ""}
+      ${sintomas.length ? `<div class="lista">${sintomas.map(s => `<div class="item"><span><b>${esc(s.sintoma)}</b><div class="sub">${rotuloDia(s.data)}</div></span><span class="pill neutro">intensidade ${s.intens}</span></div>`).join("")}</div>` : ""}
       <button class="btn sec peq" data-acao="aba" data-aba="saude">Abrir saúde</button></section>
   </div>`;
 };
@@ -452,6 +494,8 @@ export const acoes = {
   agua: async el => { const hj = iso(hoje()); const a = lista("agua").find(x => x.data === hj); const copos = Math.max(0, (a?.copos || 0) + Number(el.dataset.d)); await salvar("agua", { data: hj, copos }, a?.id); render(); },
   "tirar-disc": async el => { const d = el.dataset.d; await salvarConfig({ disciplinas: config().disciplinas.filter(x => x !== d) }); render(); },
   sugestao: el => enviarChat(el.dataset.t),
+  "painel-sugestao": el => { S.ui.painelDesde = S.ui.chat.length; return enviarChat(el.dataset.t); },
+  "painel-limpar": () => { S.ui.painelDesde = null; render(); },
   confirmar: async el => {
     const msg = S.ui.chat[Number(el.dataset.i)], p = msg.previa; if (!p || p.estado !== "pendente") return;
     p.estado = "salvando"; render();
@@ -508,6 +552,7 @@ export const formularios = {
   },
   treino: async (fd, form) => { const min = parseInt(fd.get("min"), 10); if (!(min > 0)) return erroForm(form, "Digite a duração em minutos."); await salvar("treino", { data: comData(fd.get("data") || iso(hoje()), "12:00"), tipo: String(fd.get("tipo")).trim(), min }); aviso("ok", "Treino registrado."); },
   refeicao: async fd => { await salvar("refeicao", { data: iso(hoje()), quando: String(fd.get("quando")), texto: String(fd.get("texto")).trim() }); aviso("ok", "Refeição registrada."); },
+  painel: async (fd, form) => { const t = String(fd.get("t")); if (!t.trim()) return; form.reset(); if (S.ui.painelDesde == null || S.ui.painelDesde > S.ui.chat.length) S.ui.painelDesde = S.ui.chat.length; await enviarChat(t); },
   chat: async (fd, form) => { const t = String(fd.get("t")); form.reset(); await enviarChat(t); },
   ollama: async fd => { salvarOllama({ ativo: fd.get("ativo") === "on", url: String(fd.get("url")).trim() || "http://localhost:11434", modelo: String(fd.get("modelo")).trim() || "qwen2.5:3b" }); S.ui.ollamaStatus = null; aviso("ok", "Configuração da IA local salva neste aparelho."); },
   logout: async fd => { await salvarConfig({ logoutMin: Number(fd.get("min")) }); aviso("ok", "Tempo de logout automático salvo."); }
