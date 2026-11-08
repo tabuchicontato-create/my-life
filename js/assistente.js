@@ -43,6 +43,7 @@ const ATIVIDADES = [[/musculacao|academia|malhei/, "Musculação"], [/\bi?oga\b|
 function duracaoMin(n){
   let m;
   if (/uma hora e meia/.test(n)) return 90;
+  if ((m = n.match(/(\d+)\s*h(?:oras?)?\s*e\s*meia\b/))) return Number(m[1]) * 60 + 30;
   if ((m = n.match(/(\d+)\s*h(?:oras?)?\s*(?:e\s*)?(\d{1,2})\s*(?:min(?:utos?)?)?\b/))) return Number(m[1]) * 60 + Number(m[2]);
   if ((m = n.match(/(\d+(?:,\d+)?)\s*h(?:oras?)?\b/))) return Math.round(valorBR(m[1]) * 60);
   if ((m = n.match(/(\d+)\s*min/))) return Number(m[1]);
@@ -52,7 +53,8 @@ function duracaoMin(n){
 }
 function lerTreino(n, base){
   if (/estud|prova|trabalho|seminario|aula/.test(n)) return null;
-  const verbo = /\b(treinei|pratiquei|corri|caminhei|nadei|pedalei|malhei|alonguei)\b/.test(n);
+  if (/^(?:eu\s+)?(?:tod[ao]s?\b|de segunda a sexta|nos dias uteis)/.test(n)) return null; // é rotina
+  const verbo = /\b(treinei|pratiquei|corri|caminhei|nadei|pedalei|malhei|alonguei)\b/.test(n) || (/\btreino\b/.test(n) && /\b(deu|foi|durou|fiz|teve|de)\b/.test(n));
   const fiz = /\b(fiz|fui)\b/.test(n);
   const ativ = ATIVIDADES.find(([r]) => r.test(n));
   const min = duracaoMin(n);
@@ -70,7 +72,7 @@ function lerTreino(n, base){
 }
 
 // Sintoma: "estou com dor de cabeça forte", "tive cólica ontem", "acordei enjoada"
-const SINTOMA = /\b(dor(es)?\b|doendo|colica|enjo|nausea|tontura|tonta|tonto|enxaqueca|febre|calafrio|cansac|cansad|fadiga|exaust|insonia|inchac|inchad|acne|espinha|queda de cabelo|sangramento|fluxo|gases|azia|diarreia|constipa|prisao de ventre|mal[- ]estar|indisposi|vomit|irritad|irritabil|triste|desanim|ansios|ansiedade|estress|coceira|falta de ar|palpita|tosse|coriza|gripad|resfriad|sonolen)/;
+const SINTOMA = /\b(dor(es)?\b|doendo|colica|menstrua|enjo|nausea|tontura|tonta|tonto|enxaqueca|febre|calafrio|cansac|cansad|fadiga|exaust|insonia|inchac|inchad|acne|espinha|queda de cabelo|sangramento|fluxo|gases|azia|diarreia|constipa|prisao de ventre|mal[- ]estar|indisposi|vomit|irritad|irritabil|triste|desanim|ansios|ansiedade|estress|coceira|falta de ar|palpita|tosse|coriza|gripad|resfriad|sonolen)/;
 const GATILHO = /\b(estou|esta|to|tou|ando|acordei|amanheci|fiquei|sinto|senti|sentindo|tive|tenho|bateu|deu|com)\b/;
 function lerSintoma(n, base){
   const k = n.search(SINTOMA);
@@ -165,7 +167,7 @@ function lerFeita(n){
   return { resp: "Marcar como feita?", previa: { acao: "aval-feita", dados: { id: a.id }, campos: { "Avaliação": `${a.tipo} de ${a.disc}`, "Data": quandoTxt(new Date(a.data), true), "Marcar como": "Feita" } } };
 }
 function lerNota(n){
-  if (/\b(tirei|tive|fiquei com|minha nota|nota)\b.*\b\d/.test(n) && /\b(prova|nota|trabalho|seminario|substitutiva|media)\b/.test(n))
+  if ((/\b(tirei|tive|fiquei com|minha nota|nota)\b.*\b\d/.test(n) || /\b(prova|trabalho|seminario|substitutiva)\b.*\b(foi|deu|ficou)\s+\d+(?:[.,]\d+)?\s*$/.test(n)) && /\b(prova|nota|trabalho|seminario|substitutiva|media)\b/.test(n))
     return { resp: "O MY LIFE ainda não tem lugar para guardar notas de prova. Por enquanto eu consigo marcar a prova como feita: \"Fiz a prova de Anatomia\"." };
   return null;
 }
@@ -258,11 +260,11 @@ function lerCarga(n, base){
   return { resp: "Confere antes de eu salvar?", previa: { acao: "carga", dados: { data: quando.toISOString(), exercicio, peso, series, reps, nota: "" }, campos: { "Exercício": exercicio, "Carga": `${peso.toLocaleString("pt-BR")} kg`, "Séries × reps": `${series || "—"} × ${reps || "—"}`, "Data": quandoTxt(quando) } } };
 }
 function lerRefeicao(n, base){
-  const m = n.match(/\b(almocei|jantei|lanchei|comi|tomei cafe(?: da manha)?|cafe da manha|no almoco|no jantar|no lanche|de lanche|na ceia|de almoco|de janta|de jantar)\b/);
+  const m = n.match(/\b(almocei|jantei|lanchei|tomei cafe(?: da manha)?|no cafe da manha|cafe da manha|no cafe|no almoco|no jantar|no lanche|na janta|de manha comi|a noite comi|comi|no jantar|no lanche|de lanche|na ceia|de almoco|de janta|de jantar)\b/);
   if (!m) return null;
   const q = m[1];
   const hr = new Date().getHours();
-  const quando = /cafe/.test(q) ? "Café da manhã" : /almo/.test(q) ? "Almoço" : /jant/.test(q) ? "Jantar" : /ceia/.test(q) ? "Ceia" : /lanch/.test(q) ? "Lanche" : hr < 10 ? "Café da manhã" : hr < 15 ? "Almoço" : hr < 18 ? "Lanche" : hr < 22 ? "Jantar" : "Ceia";
+  const quando = /cafe|manha/.test(q) ? "Café da manhã" : /almo/.test(q) ? "Almoço" : /jant/.test(q) ? "Jantar" : /ceia/.test(q) ? "Ceia" : /lanch/.test(q) ? "Lanche" : hr < 10 ? "Café da manhã" : hr < 15 ? "Almoço" : hr < 18 ? "Lanche" : hr < 22 ? "Jantar" : "Ceia";
   // Refeição com valor ("almocei e paguei 25 pila") é um gasto com a refeição.
   const v = n.match(/(?:r\$\s*)?(\d+(?:,\d{1,2})?)\s*(?:reais|conto|contos|pila|pilas)\b/) || (/\b(paguei|gastei|deixei|custou|saiu)\b/.test(n) && n.match(/\b(?:paguei|gastei|deixei|custou|saiu(?: por)?)\s+(?:r\$\s*)?(\d+(?:,\d{1,2})?)\b/));
   if (v){
@@ -292,7 +294,99 @@ const SEPARA = new RegExp(
   "|[,;]\\s+(?=(?:e\\s+)?(?:acho que|depois|tamb[eé]m|al[eé]m disso|a[ií]|ent[aã]o|mas|hoje|ontem|amanh[aã]|j[aá]|eu|vou|preciso|quero|tenho|estou|t[oô]|fiz|tive|" + VERBOS + ")" + FB + ")" +
   "|\\s+(?=(?:" + VERBOS + ")" + FB + ")" +
   "|\\s+(?=(?:amanh[aã]|hoje|ontem|depois)\\s+(?:eu\\s+)?(?:vou|tenho|preciso|quero|estudei|fiz)" + FB + ")", "i");
+/* ---------- Jeito de falar: abreviações, erros de digitação e expressões ----------
+   Roda antes das regras. Nada sai do aparelho. */
+const EXPRESSOES = [
+  // "minha cabeça tá me matando" → "dor de cabeça insuportável"
+  [/\b(?:minha |meu |a |o )?(cabe[cç]a|barriga|est[oô]mago|costas|garganta|c[oó]lica|dente|coluna|lombar)\s+(?:t[aá]|est[aá]|ta)\s+(?:me matando|insuport[aá]vel|horr[ií]vel|terr[ií]vel|absurd[ao]|demais|forte|muito forte)/gi, (m, p) => /c[oó]lica/i.test(p) ? "estou com cólica insuportável" : "estou com dor " + (/costas|coluna|lombar|dente/i.test(p) ? "na " : "de ") + p.toLowerCase() + " insuportável"],
+  // intensidade dita de forma figurada
+  [/\b(me matando|t[aá] me matando|morrendo de|absurd[ao]|do inferno|horr[ií]vel|terr[ií]vel|insuport[aá]vel|que n[aã]o passa)\b/gi, "insuportável"],
+  [/\bcabe[cç]a (explodindo|estourando|latejando|rachando)\b/gi, "dor de cabeça forte"],
+  [/\b(barriga|est[oô]mago|cabe[cç]a|costas|perna|pernas|garganta|dente|p[eé]|bra[cç]o|ouvido|olho|peito|lombar|joelho|coluna) (doendo|d[oó]endo|d[oó]i|ruim)(?![\wÀ-ÿ])/gi, (m, p) => "dor " + (/barriga|est|cabe|garganta/i.test(p) ? "de " : "no ") + p],
+  [/\b(t[oô]|estou|fiquei|ando|acordei|amanheci) (um caco|morta|morto|acabad[ao]|destru[ií]d[ao]|podre|moíd[ao]|mo[ií]d[ao]|sem energia|esgotad[ao]|exaust[ao])\b/gi, (m, v) => v + " cansada"],
+  [/\b(t[oô]|estou|fiquei|acordei|amanheci) (meio |muito |bem )?(mal|ruim|zoad[ao]|baqueada|baqueado)\b/gi, (m, v, i) => v + " com " + (i || "") + "mal-estar"],
+  [/\b(t[oô]|estou|fiquei|acordei) (meio |muito |bem )?(ansiosa|ansioso|nervosa|nervoso|agoniad[ao])\b/gi, (m, v, i) => v + " com " + (i || "") + "ansiedade"],
+  [/\b(dormi mal|n[aã]o dormi|n[aã]o consegui dormir|perdi o sono|virei a noite acordad[ao])\b/gi, "tive insônia"],
+  [/(?<![\wÀ-ÿ])([aâ]nsia( de v[oô]mito)?|vontade de vomitar|enjoad[ao])\b/gi, "enjoo"],
+  [/\b(menstruei|fiquei menstruada|desceu (minha )?menstrua[cç][aã]o|minha menstrua[cç][aã]o desceu|t[oô] menstruada|estou menstruada)\b/gi, "estou com menstruação"],
+  // dinheiro
+  [/\b(\d+(?:[.,]\d+)?)\s*(conto|contos|pila|pilas|mangos?|pratas?|dilmas?|paus?|rs|r)\b(?!\$)/gi, "$1 reais"],
+  [/\b(torrei|queimei|larguei|deixei|foram|foi|saiu|meti|enfiei)\s+(r\$\s*)?(\d+(?:[.,]\d+)?)\s*(reais)?\s+(n[oa]s?|com|em|de|pra|para)\s+/gi, "gastei $3 $5 "],
+  [/\b(caiu|entrou|pingou)\s+(r\$\s*)?(\d+(?:[.,]\d+)?)\s*(reais)?\s+(d[oa]s?|de)\s+/gi, "recebi $3 de "],
+  // treino e comida
+  [/\b(puxei ferro|fui (pra|na|para a) academia e treinei|treinei na academia|fiz academia|fiz muscula[cç][aã]o)\b/gi, "malhei"],
+  [/\b(bati perna|andei)\b/gi, "caminhei"],
+  [/\b(rangei|ranguei|matei a fome com|forrei o estômago com)\b/gi, "comi"],
+  [/\bd['’]?[aá]gua\b/gi, "de água"],
+  // exageros: "pra caramba", "dms" → "demais"
+  [/\b(pra|para) (caramba|caralho|cacete|krl|crl|burro|cachorro)\b|\b(dms|dmais|dimais)\b/gi, "demais"],
+  // "comprei um prato de 30 reais" / "o uber saiu 18"
+  [/\bcomprei\s+(?:um |uma |uns |umas |o |a |os |as )?(.+?)\s+(?:de|por|a)\s+(?:r\$\s*)?(\d+(?:[.,]\d{1,2})?)\s*(?:reais)?(?=\s*$|\s*[,.;!])/gi, "gastei $2 com $1"],
+  [/(?:^|\s)(?:o |a |os |as |no |na |nos |nas |do |da )?([a-zà-ÿ][a-zà-ÿ ]{1,25}?)\s+(?:saiu|custou|deu|ficou|foi)\s+(?:por\s+|de\s+)?(?:r\$\s*)?(\d+(?:[.,]\d{1,2})?)(?!\s*(?:min|h\b|horas?|kg|copos?|x\b|%|dias?|vezes|pontos?))\s*(?:reais)?(?=\s*$|\s*[,.;!]|\s+e\s)/gi,
+    (m, o, v) => /prova|nota|media|trabalho|seminario|seminário|aula|treino|exame|estudo|sono|copo|dia\b/i.test(o) ? m : ` gastei ${v} com ${o}`],
+  [/(gastei \d+(?:[.,]\d{1,2})? com [^,.;]+?) e (?:o |a |os |as )?([a-zà-ÿ][a-zà-ÿ ]{1,20}?) (?:foi |deu |saiu |custou |de )?(?:r\$\s*)?(\d+(?:[.,]\d{1,2})?)\s*(?:reais)?(?=\s*$|\s*[,.;!])/gi, "$1, gastei $3 com $2"],
+  // "quinta tem seminário de metep às 3" → "tenho seminário de metep quinta às 3"
+  [/^\s*(?:na |no |nesta |neste |essa |esse )?(hoje|amanh[ãa]|segunda|ter[çc]a|quarta|quinta|sexta|s[áa]bado|domingo|dia \d{1,2}(?:\/\d{1,2})?)(?:[- ]feira)?\s+(?:eu\s+)?(?:tenho|tem|vou ter|terei|vai ter)\s+(?:uma?\s+)?(prova|trabalho|semin[áa]rio|substitutiva)\s+(de|da|do)\s+(.+?)(\s+(?:[àa]s|a)\s+\d.*)?\s*$/i, " tenho $2 $3 $4 $1$5"],
+  // tempo
+  [/\b(\d+)\s*(hrs?|hs|horas?)\b/gi, "$1h"],
+  [/\b(\d+)\s*(mins?|minutos?|m)\b/gi, "$1 min"],
+  [/\bfim de semana que vem\b/gi, "sábado"]
+];
+const ABREV = { tomey: "tomei", tomie: "tomei", toemi: "tomei", tomeii: "tomei", bebei: "bebi", bebii: "bebi", bebe: "bebi", pagei: "paguei", porva: "prova", prvoa: "prova", exmae: "exame", exma: "exame", febri: "febre", colca: "cólica", agau: "água", aguaa: "água", hj: "hoje", hje: "hoje", oje: "hoje", amn: "amanhã", amnh: "amanhã", amnha: "amanhã", amanha: "amanhã", manha: "manhã", ontm: "ontem", onti: "ontem", dps: "depois", dpois: "depois", tbm: "também", tb: "também", tmb: "também", tambem: "também", vc: "você", voce: "você", q: "que", oq: "o que", pq: "porque", n: "não", ñ: "não", nao: "não", naum: "não", mt: "muito", mto: "muito", mta: "muita", mts: "muitos", td: "tudo", msm: "mesmo", agr: "agora", tava: "estava", tô: "estou", tou: "estou", to: "estou", tá: "está", ta: "está", pra: "para", pro: "para o", prum: "para um", numa: "em uma", num: "em um", ai: "aí", seg: "segunda", qua: "quarta", qui: "quinta", sab: "sábado", sabado: "sábado", dom: "domingo", terca: "terça", remedio: "remédio", remedios: "remédios", agua: "água", estomago: "estômago", cabeca: "cabeça", colica: "cólica", musculacao: "musculação", materia: "matéria", seminario: "seminário", almoco: "almoço", cafe: "café", farmacia: "farmácia", orcamento: "orçamento", salario: "salário", enxaqueca: "enxaqueca", sintoma: "sintoma", rango: "comida", busao: "ônibus", onibus: "ônibus" };
+const NUMS = { dois: 2, duas: 2, tres: 3, três: 3, quatro: 4, cinco: 5, seis: 6, sete: 7, oito: 8, nove: 9, dez: 10, onze: 11, doze: 12, treze: 13, quatorze: 14, catorze: 14, quinze: 15, dezesseis: 16, dezessete: 17, dezoito: 18, dezenove: 19, vinte: 20, trinta: 30, quarenta: 40, cinquenta: 50, sessenta: 60, setenta: 70, oitenta: 80, noventa: 90, cem: 100, cento: 100, duzentos: 200, trezentos: 300, quinhentos: 500, mil: 1000 };
+const UNIDADE = "(?:reais|conto|contos|pila|horas?|h|min|minutos?|copos?|litros?|garrafas?|kg|quilos?|s[eé]ries|vezes|x|comprimidos?)";
+// Palavras que o app procura; erros de digitação são corrigidos para a mais parecida.
+const VOCAB = "estudei estudar estudando revisei paguei gastei comprei recebi ganhei tomei bebi almocei jantei lanchei treinei malhei corri caminhei pedalei nadei consulta consultas exame exames remédio remédios comprimido água copos copo litro litros prova provas trabalho trabalhos seminário substitutiva cabeça estômago barriga cólica febre enjoo tontura enxaqueca cansada cansado ansiedade insônia amanhã ontem hoje segunda terça quarta quinta sexta sábado domingo minutos horas academia musculação caminhada corrida pilates limite orçamento disciplina matéria resultado ginecologista dentista endocrinologista nutricionista dermatologista psicóloga psiquiatra supino agachamento almoço jantar lanche mercado farmácia gasolina aluguel freela salário mensalidade estágio tutoria monitoria dipirona ibuprofeno paracetamol metformina anticoncepcional vitamina";
+const NAO_CORRIGIR = new Set("estudante estudantes quarto quinto sexto segundo terço prato preto prata banco campo conta conto carro carta corpo copa cabeça caneca tutora estudo estudos provar provei tomar tomou comer comeu beber bebeu gastar gastou pagar pagou pagou compra compras exata exato trabalhe trabalho semana semanas minuto minha minhas sexta-feira domingos sábados segundas quartas quintas sextas terças".split(" "));
+function distancia(a, b){
+  if (Math.abs(a.length - b.length) > 2) return 9;
+  const d = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)]);
+  for (let j = 1; j <= b.length; j++) d[0][j] = j;
+  for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++){
+    d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1);
+  }
+  return d[a.length][b.length];
+}
+function vocabulario(){
+  const extra = [...config().disciplinas.flatMap(d => d.split(/\s+/)), ...lista("med").flatMap(m => String(m.nome).split(/\s+/)), ...Object.keys(config().orcamento)];
+  const mapa = new Map();
+  for (const w of [...VOCAB.split(" "), ...extra]) if (w.length >= 4) mapa.set(norm(w), w);
+  return mapa;
+}
+function corrigirPalavra(w, voc){
+  const k = norm(w);
+  if (ABREV[k] !== undefined) return ABREV[k];
+  if (k.length < 6 || voc.has(k) || NAO_CORRIGIR.has(k) || /\d/.test(k)) return w;
+  const lim = k.length >= 8 ? 2 : 1;
+  let melhor = null, dm = 9, empate = false;
+  for (const [vk, vw] of voc){
+    if (vk[0] !== k[0] || vk.replace(/s$/, "") === k.replace(/s$/, "")) continue;
+    const d = distancia(k, vk);
+    if (d < dm){ dm = d; melhor = vw; empate = false; } else if (d === dm) empate = true;
+  }
+  return melhor && dm <= lim && !empate ? melhor : w;
+}
+function numerosPorExtenso(t){
+  const pal = "(" + Object.keys(NUMS).join("|") + ")";
+  // "vinte e cinco reais", "duas horas", "um copo", "meia hora" (meia hora já é entendida)
+  t = t.replace(new RegExp("\\b" + pal + "\\s+e\\s+" + pal + "\\s+(?=" + UNIDADE + FB + ")", "gi"), (m, a, b) => (NUMS[norm(a)] + NUMS[norm(b)]) + " ");
+  t = t.replace(new RegExp("\\b" + pal + "\\s+(?=" + UNIDADE + FB + ")", "gi"), (m, a) => NUMS[norm(a)] + " ");
+  t = t.replace(new RegExp("\\b(uma?)\\s+(?=(?:hora|copo|litro|garrafa|comprimido|s[eé]rie)" + FB + ")", "gi"), "1 ");
+  return t;
+}
+export function corrigir(texto){
+  let t = " " + String(texto ?? "").normalize("NFC") + " ";
+  for (const [r, s] of EXPRESSOES) t = t.replace(r, s);
+  const voc = vocabulario();
+  t = t.replace(/[A-Za-zÀ-ÿñ]+(?:-[A-Za-zÀ-ÿ]+)?/g, w => corrigirPalavra(w, voc));
+  t = numerosPorExtenso(t);
+  for (const [r, s] of EXPRESSOES) t = t.replace(r, s); // de novo, já com abreviações e números corrigidos
+  return t.replace(/\s+/g, " ").trim();
+}
+
 export function interpretarVarias(texto, ctx){
+  texto = corrigir(texto);
   const partes = texto.split(SEPARA).map(s => s.trim()).filter(s => s.length > 2)
     .reduce((acc, s) => { const ult = acc[acc.length - 1]; if (ult && (ult.split(/\s+/).length < 2 || s.split(/\s+/).length < 2)) acc[acc.length - 1] = ult + " e " + s; else acc.push(s); return acc; }, []);
   if (partes.length < 2) return [interpretar(texto, ctx)];
@@ -325,7 +419,7 @@ export function interpretar(texto, ctx){
     return { resp: "Confere antes de eu salvar?", previa: { acao: "fin", dados: { tipo, valor, desc: cap(desc.replace(/\s*ontem\s*$/i, "")), cat, data: quando.toISOString() }, campos: { "Tipo": cap(tipo), "Valor": brl(valor), "Descrição": desc, "Categoria": cat, "Data": rotuloDia(quando) + ", " + fData(quando) } } };
   }
 
-  m = n.match(/tenho\s+(?:uma?\s+)?(prova|trabalho|seminario|substitutiva)\s+(?:de|da|do)\s+([a-z ]+?)\s+(hoje|amanha|segunda|terca|quarta|quinta|sexta|sabado|domingo|dia \d{1,2}(?:\/\d{1,2})?)(?:[- ]feira)?(?:\s+(?:as|a)\s+(\d{1,2})(?:[:h](\d{2}))?\s*h?)?/);
+  m = n.match(/(?:tenho|tem|vou ter|terei|vai ter|temos|teremos)\s+(?:uma?\s+)?(prova|trabalho|seminario|substitutiva)\s+(?:de|da|do)\s+([a-z ]+?)\s+(?:(?:na |nesta |essa )?(?:semana que vem|proxima semana)\s+)?(?:na |nesta |no |neste |essa |esse |nessa |nesse |proxima |proximo )?(hoje|amanha|segunda|terca|quarta|quinta|sexta|sabado|domingo|dia \d{1,2}(?:\/\d{1,2})?)(?:[- ]feira)?(?:\s+(?:as|a)\s+(\d{1,2})(?:[:h](\d{2}))?\s*h?)?/);
   if (m){
     const tipo = { prova: "Prova", trabalho: "Trabalho", seminario: "Seminário", substitutiva: "Substitutiva" }[m[1]];
     const discN = m[2].trim();
@@ -334,8 +428,9 @@ export function interpretar(texto, ctx){
     let d;
     if (m[3] === "hoje") d = dia(0); else if (m[3] === "amanha") d = dia(1);
     else if (m[3].startsWith("dia")){ const [dd, mm] = m[3].slice(4).split("/").map(Number); d = new Date(hoje().getFullYear(), mm ? mm - 1 : hoje().getMonth(), dd); if (d < hoje()) d.setMonth(d.getMonth() + (mm ? 12 : 1)); }
-    else { const alvo = DIAS_N.indexOf(m[3]); d = dia((alvo - hoje().getDay() + 7) % 7); }
+    else { const alvo = DIAS_N.indexOf(m[3]); let k = (alvo - hoje().getDay() + 7) % 7; if (/semana que vem|proxima semana/.test(n) && k <= (7 - hoje().getDay()) % 7) k += 7; /* semana começando na segunda */ d = dia(k); }
     d.setHours(m[4] ? Number(m[4]) : 8, m[5] ? Number(m[5]) : 0, 0, 0);
+    if (m[4] && /\b(da tarde|da noite)\b/.test(n) && d.getHours() < 12) d.setHours(d.getHours() + 12);
     const fimD = new Date(d.getTime() + 7200000);
     const choque = ctx.eventosDoDia(d).find(e => !e.diaTodo && e.ini < fimD && d < e.fim);
     return { resp: "Confere antes de eu salvar?" + (choque ? `\n\nAtenção: choca com "${choque.titulo}" (${fHora(choque.ini)}–${fHora(choque.fim)}).` : ""), previa: { acao: "aval", dados: { tipo, disc, titulo: tipo + " de " + disc, data: d.toISOString(), feita: false }, campos: { "Tipo": tipo, "Disciplina": disc + (discs.includes(disc) ? "" : " (nova)"), "Quando": `${rotuloDia(d)}, ${fData(d)} às ${fHora(d)}` } } };
